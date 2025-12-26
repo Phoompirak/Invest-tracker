@@ -1,5 +1,5 @@
 // Google OAuth Configuration
-export const GOOGLE_CLIENT_ID = '983559703202-doi5ns897abucpana9tlr44sag7lbikl.apps.googleusercontent.com';
+export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 // API Scopes required for the application
 export const GOOGLE_SCOPES = [
