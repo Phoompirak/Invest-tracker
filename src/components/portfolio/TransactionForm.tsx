@@ -15,7 +15,9 @@ import { TransactionType, PortfolioCategory, Transaction } from "@/types/portfol
 import { toast } from "sonner";
 import { Plus, Minus } from "lucide-react";
 
-interface TransactionFormProps {
+import { ImportDialog, ImportData } from "./ImportDialog";
+
+export interface TransactionFormProps {
   onSubmit: (
     ticker: string,
     type: TransactionType,
@@ -26,11 +28,12 @@ interface TransactionFormProps {
     category: PortfolioCategory,
     relatedBuyId?: string
   ) => void;
+  onImport: (data: ImportData[]) => Promise<void>;
   buyTransactions: Transaction[];
   getBuyTransactionsForSale: (ticker: string) => Transaction[];
 }
 
-export function TransactionForm({ onSubmit, buyTransactions, getBuyTransactionsForSale }: TransactionFormProps) {
+export function TransactionForm({ onSubmit, onImport, buyTransactions, getBuyTransactionsForSale }: TransactionFormProps) {
   const [type, setType] = useState<TransactionType>('buy');
   const [ticker, setTicker] = useState('');
   const [shares, setShares] = useState('');
@@ -45,7 +48,7 @@ export function TransactionForm({ onSubmit, buyTransactions, getBuyTransactionsF
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!ticker.trim()) {
       toast.error('กรุณากรอกสัญลักษณ์หุ้น');
       return;
@@ -60,7 +63,7 @@ export function TransactionForm({ onSubmit, buyTransactions, getBuyTransactionsF
     }
 
     const timestamp = new Date(`${date}T${time}`);
-    
+
     onSubmit(
       ticker.toUpperCase().trim(),
       type,
@@ -73,7 +76,7 @@ export function TransactionForm({ onSubmit, buyTransactions, getBuyTransactionsF
     );
 
     toast.success(`${type === 'buy' ? 'บันทึกการซื้อ' : 'บันทึกการขาย'} ${ticker.toUpperCase()} สำเร็จ`);
-    
+
     // Reset form
     setTicker('');
     setShares('');
@@ -84,10 +87,11 @@ export function TransactionForm({ onSubmit, buyTransactions, getBuyTransactionsF
 
   return (
     <Card className="border-2 border-foreground shadow-sm">
-      <CardHeader className="border-b-2 border-foreground">
+      <CardHeader className="border-b-2 border-foreground flex flex-row items-center justify-between">
         <CardTitle className="text-xl font-bold uppercase tracking-wide">
           บันทึกรายการซื้อขาย
         </CardTitle>
+        <ImportDialog onImport={onImport} />
       </CardHeader>
       <CardContent className="pt-6">
         <Tabs value={type} onValueChange={(v) => setType(v as TransactionType)}>
@@ -235,13 +239,12 @@ export function TransactionForm({ onSubmit, buyTransactions, getBuyTransactionsF
               </div>
             )}
 
-            <Button 
-              type="submit" 
-              className={`w-full border-2 border-foreground font-bold uppercase text-lg py-6 ${
-                type === 'buy' 
-                  ? 'bg-chart-2 hover:bg-chart-2/90 text-foreground' 
+            <Button
+              type="submit"
+              className={`w-full border-2 border-foreground font-bold uppercase text-lg py-6 ${type === 'buy'
+                  ? 'bg-chart-2 hover:bg-chart-2/90 text-foreground'
                   : 'bg-destructive hover:bg-destructive/90'
-              }`}
+                }`}
             >
               {type === 'buy' ? 'บันทึกการซื้อ' : 'บันทึกการขาย'}
             </Button>

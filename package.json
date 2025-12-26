@@ -8,7 +8,9 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "vite preview",
+    "pwa": "vite build --mode pwa"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
