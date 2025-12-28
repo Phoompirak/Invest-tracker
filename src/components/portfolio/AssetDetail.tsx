@@ -101,7 +101,7 @@ export function AssetDetail({
                     <div className="grid grid-cols-2 gap-4">
                         <Card className="p-4 border-2 border-foreground bg-secondary/30 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                             <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">กำไร/ขาดทุนสะสม</p>
-                            <div className={`flex items-center gap-1 font-bold ${holding.unrealizedPL >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+                            <div className={`flex items-center gap-1 font-bold ${holding.unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                 {holding.unrealizedPL >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                                 <span className="font-mono text-lg">{formatPercent(holding.unrealizedPLPercent)}</span>
                             </div>
@@ -110,7 +110,7 @@ export function AssetDetail({
 
                         <Card className="p-4 border-2 border-foreground bg-secondary/30 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                             <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">กำไรที่ขายออกไปแล้ว</p>
-                            <div className={`flex items-center gap-1 font-bold ${totalRealizedPL >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>
+                            <div className={`flex items-center gap-1 font-bold ${totalRealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                 <ArrowUpRight className="h-4 w-4" />
                                 <span className="font-mono text-lg">{formatCurrency(totalRealizedPL)}</span>
                             </div>
@@ -151,8 +151,8 @@ export function AssetDetail({
                             {assetTransactions.map((t) => (
                                 <div key={t.id} className="flex items-center justify-between p-3 border-2 border-foreground rounded-lg bg-background hover:bg-secondary/20 transition-colors">
                                     <div className="flex items-center gap-3">
-                                        <div className={`p-1.5 rounded-md ${t.type === 'buy' ? 'bg-emerald-100 text-emerald-700' :
-                                            t.type === 'sell' ? 'bg-destructive/10 text-destructive' : 'bg-amber-100 text-amber-700'
+                                        <div className={`p-1.5 rounded-md ${t.type === 'buy' ? 'bg-green-100 text-green-700' :
+                                            t.type === 'sell' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
                                             }`}>
                                             {t.type === 'buy' ? <Plus className="h-4 w-4" /> :
                                                 t.type === 'sell' ? <Minus className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
@@ -168,7 +168,7 @@ export function AssetDetail({
                                             {t.currency === 'USD' ? '$' : '฿'}{t.pricePerShare.toLocaleString()}
                                         </p>
                                         {t.realizedPL !== undefined && (
-                                            <p className={`text-[10px] font-bold ${t.realizedPL >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+                                            <p className={`text-[10px] font-bold ${t.realizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                                 {t.realizedPL >= 0 ? '+' : ''}{t.realizedPL.toLocaleString()} {t.currency}
                                             </p>
                                         )}

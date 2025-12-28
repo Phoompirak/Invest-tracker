@@ -1,6 +1,8 @@
 export type TransactionType = 'buy' | 'sell' | 'dividend';
 
-export type PortfolioCategory = 'securities' | 'long-term' | 'speculation';
+// export type PortfolioCategory = 'securities' | 'long-term' | 'speculation';
+export type PortfolioCategory = string; // Allow custom categories
+
 
 export interface Transaction {
   id: string;
@@ -18,6 +20,7 @@ export interface Transaction {
   dividendPerShare?: number; // For dividend transactions
   withholdingTax?: number; // Tax withheld on dividends
   currency?: 'THB' | 'USD';
+  exchangeRate?: number; // Historical exchange rate at time of transaction
 }
 
 export interface Holding {

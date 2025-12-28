@@ -21,19 +21,23 @@ import { TaxCalculator } from "./TaxCalculator";
 import { AllocationChart } from "./AllocationChart";
 import { AssetDetail } from "./AssetDetail";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { StockSplitTool } from "./StockSplitTool";
+import { ExportTools } from "./ExportTools";
 
 interface DimeLayoutProps {
   holdings: Holding[];
   summary: PortfolioSummary;
   exchangeRate: number;
   transactions?: Transaction[];
+  onUpdateTransaction?: (id: string, updates: Partial<Transaction>) => void;
 }
 
 export function DimeLayout({
   holdings,
   summary,
   exchangeRate = 34.5,
-  transactions = []
+  transactions = [],
+  onUpdateTransaction
 }: DimeLayoutProps) {
   const [showValue, setShowValue] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['long-term', 'securities', 'speculation']);
@@ -210,6 +214,57 @@ export function DimeLayout({
                   </div>
                 </Card>
               )}
+
+              {/* Detailed Performance Breakdown */}
+              <Card className="p-4 border-2 border-primary/20 bg-card shadow-md">
+                <h3 className="font-bold text-sm text-muted-foreground uppercase mb-4 flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" /> ภาพรวมผลตอบแทน (Performance)
+                </h3>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">ต้นทุนรวม (Invested)</p>
+                    <p className="font-mono font-bold text-lg">{showValue ? formatCurrency(summary.totalInvested) : "••••••"}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground">มูลค่าปัจจุบัน (Market Value)</p>
+                    <p className="font-mono font-bold text-lg">{showValue ? formatCurrency(summary.totalValue) : "••••••"}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-4 border-t border-border">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">กำไร/ขาดทุน (Unrealized)</span>
+                    <span className={`font-mono font-bold ${summary.totalUnrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {summary.totalUnrealizedPL >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalUnrealizedPL) : "••••••"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">กำไรขายแล้ว (Realized)</span>
+                    <span className={`font-mono font-bold ${summary.totalRealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {summary.totalRealizedPL >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalRealizedPL) : "••••••"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">เงินปันผล (Dividends)</span>
+                    <span className="font-mono font-bold text-green-500">
+                      +{showValue ? formatCurrency(summary.totalDividends) : "••••••"}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-3 border-t border-border mt-2">
+                    <span className="font-bold">กำไรสุทธิ (Net Profit)</span>
+                    <div className="text-right">
+                      <span className={`block font-mono font-black text-xl ${summary.totalPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {summary.totalPL >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalPL) : "••••••"}
+                      </span>
+                      <span className={`text-xs font-bold ${summary.totalPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {formatPercent(summary.totalPLPercent)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </Card>
             </div>
 
             {/* Allocation Chart */}
@@ -257,7 +312,7 @@ export function DimeLayout({
                                   {showValue ? formatCurrency(totals.totalValue) : "••••••"}
                                 </p>
                                 {totals.totalPL !== 0 && (
-                                  <div className={`flex items-center justify-end gap-1 text-sm ${totals.totalPL >= 0 ? 'text-emerald-600' : 'text-destructive'
+                                  <div className={`flex items-center justify-end gap-1 text-sm ${totals.totalPL >= 0 ? 'text-green-500' : 'text-red-500'
                                     }`}>
                                     <TrendingUp className="h-3 w-3" />
                                     <span className="font-mono">
@@ -303,7 +358,7 @@ export function DimeLayout({
                                   <p className="font-bold font-mono text-foreground">
                                     {showValue ? formatCurrency(holding.marketValue) : "••••••"}
                                   </p>
-                                  <div className={`flex items-center justify-end gap-1 text-sm ${holding.unrealizedPL >= 0 ? 'text-emerald-600' : 'text-destructive'
+                                  <div className={`flex items-center justify-end gap-1 text-sm ${holding.unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'
                                     }`}>
                                     <TrendingUp className="h-3 w-3" />
                                     <span className="font-mono">
@@ -326,6 +381,15 @@ export function DimeLayout({
           <TabsContent value="tools">
             <div className="space-y-6">
               <TaxCalculator />
+              {onUpdateTransaction && (
+                <StockSplitTool transactions={transactions} onUpdateTransaction={onUpdateTransaction} />
+              )}
+              <ExportTools
+                transactions={transactions}
+                holdings={holdings}
+                summary={summary}
+                exchangeRate={exchangeRate}
+              />
             </div>
           </TabsContent>
         </Tabs>

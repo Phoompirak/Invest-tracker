@@ -143,7 +143,8 @@ export function usePortfolio() {
     relatedBuyId?: string,
     withholdingTax?: number,
     currency?: 'THB' | 'USD',
-    manualRealizedPL?: number
+    manualRealizedPL?: number,
+    exchangeRate?: number
   ) => {
     // For dividends: totalValue is the dividend amount (pricePerShare)
     const totalValue = type === 'dividend' ? pricePerShare : shares * pricePerShare;
@@ -186,6 +187,7 @@ export function usePortfolio() {
       realizedPLPercent,
       withholdingTax: type === 'dividend' ? withholdingTax : undefined,
       currency: currency || 'THB',
+      exchangeRate,
     };
 
     // Update local state immediately
@@ -300,7 +302,8 @@ export function usePortfolio() {
       const current = holdingsMap.get(t.ticker) || { shares: 0, totalCost: 0, category: t.category };
 
       // Convert to THB if needed
-      const rate = t.currency === 'USD' ? exchangeRate : 1;
+      // Use historical exchange rate if available (for precise cost basis), otherwise fallback to current
+      const rate = t.currency === 'USD' ? (t.exchangeRate || exchangeRate) : 1;
       const transactionCost = (t.totalValue + t.commission) * rate;
 
       if (t.type === 'buy') {

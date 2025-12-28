@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Cloud, CloudOff, RefreshCw, LogOut } from "lucide-react";
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState('holdings');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const { isAuthenticated, isLoading: authLoading, user, signOut } = useAuth();
   const {
     transactions,
@@ -33,6 +33,9 @@ const Index = () => {
     exchangeRate,
     updateTransaction,
   } = usePortfolio();
+
+  // Get unique categories from all transactions
+  const existingCategories = Array.from(new Set(transactions.map(t => t.category)));
 
   // Show login screen if not authenticated
   if (!isAuthenticated) {
@@ -111,12 +114,13 @@ const Index = () => {
 
         {/* Main Content with top padding for status bar */}
         <div className="pt-12">
-          {(activeTab === 'dashboard' || activeTab === 'holdings') && (
+          {(activeTab === 'dashboard') && (
             <DimeLayout
               holdings={holdings}
               summary={summary}
               exchangeRate={exchangeRate}
               transactions={transactions}
+              onUpdateTransaction={updateTransaction}
             />
           )}
 
@@ -129,6 +133,7 @@ const Index = () => {
                   onImport={importTransactions}
                   buyTransactions={transactions.filter(t => t.type === 'buy')}
                   getBuyTransactionsForSale={getBuyTransactionsForSale}
+                  existingCategories={existingCategories}
                 />
                 <TransactionList
                   transactions={transactions}
@@ -137,6 +142,7 @@ const Index = () => {
                   onFilter={filterTransactions}
                   buyTransactions={transactions.filter(t => t.type === 'buy')}
                   getBuyTransactionsForSale={getBuyTransactionsForSale}
+                  existingCategories={existingCategories}
                 />
               </div>
             </div>

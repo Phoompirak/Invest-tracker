@@ -29,7 +29,8 @@ export interface TransactionFormProps {
     relatedBuyId?: string,
     withholdingTax?: number,
     currency?: 'THB' | 'USD',
-    manualRealizedPL?: number
+    manualRealizedPL?: number,
+    exchangeRate?: number
   ) => void;
   onUpdate?: (id: string, updates: Partial<Transaction>) => void;
   onImport?: (data: ImportData[]) => Promise<{ added: number; skipped: number }>;
@@ -37,6 +38,7 @@ export interface TransactionFormProps {
   getBuyTransactionsForSale: (ticker: string) => Transaction[];
   initialData?: Transaction | null;
   onCancel?: () => void;
+  existingCategories?: string[];
 }
 
 export function TransactionForm({
@@ -46,15 +48,32 @@ export function TransactionForm({
   buyTransactions,
   getBuyTransactionsForSale,
   initialData,
-  onCancel
+  onCancel,
+  existingCategories = []
 }: TransactionFormProps) {
   const [type, setType] = useState<TransactionType>(initialData?.type || 'buy');
   const [ticker, setTicker] = useState(initialData?.ticker || '');
   const [shares, setShares] = useState(initialData?.shares.toString() || '');
   const [price, setPrice] = useState(initialData?.pricePerShare.toString() || '');
   const [commission, setCommission] = useState(initialData?.commission.toString() || '');
-  const [category, setCategory] = useState<PortfolioCategory>(initialData?.category || 'securities');
+  const [category, setCategory] = useState<string>(initialData?.category || 'securities');
+  const [customCategory, setCustomCategory] = useState('');
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
   const [relatedBuyId, setRelatedBuyId] = useState(initialData?.relatedBuyId || '');
+
+  // Default categories
+  const defaultCategories = ['securities', 'long-term', 'speculation'];
+  // Combine defaults with existing ones, unique
+  const allCategories = Array.from(new Set([...defaultCategories, ...existingCategories]));
+
+  useEffect(() => {
+    // If editing a category that is not in defaults/existing (should be rare if passed correctly), treat as custom?
+    // Actually, just trust the value. But for UI switching:
+    if (initialData?.category && !defaultCategories.includes(initialData.category)) {
+      // It's a custom one, but maybe we want to just select it if it's in the list?
+      // If we want to allow "adding" new ones via a specific UI action:
+    }
+  }, [initialData]);
 
   const availableBuys = ticker ? getBuyTransactionsForSale(ticker) : [];
   const isEditing = !!initialData;
@@ -79,6 +98,7 @@ export function TransactionForm({
 
   const [withholdingTax, setWithholdingTax] = useState(initialData?.withholdingTax?.toString() || '');
   const [currency, setCurrency] = useState<'THB' | 'USD'>(initialData?.currency || 'THB');
+  const [exchangeRate, setExchangeRate] = useState(initialData?.exchangeRate?.toString() || '');
 
   // New: Input Mode (Units vs Amount)
   const [inputMode, setInputMode] = useState<'units' | 'amount'>('units');
@@ -174,6 +194,7 @@ export function TransactionForm({
     const finalWithholdingTax = type === 'dividend' ? (parseFloat(withholdingTax) || 0) : undefined;
     const finalTicker = ticker.toUpperCase().trim();
     const finalManualPL = (type === 'sell' && useManualPL && manualPL) ? parseFloat(manualPL) : undefined;
+    const finalExchangeRate = (currency === 'USD' && exchangeRate) ? parseFloat(exchangeRate) : undefined;
 
     if (isEditing && onUpdate && initialData) {
       // Helper to recalc PL if manual
@@ -189,6 +210,7 @@ export function TransactionForm({
         withholdingTax: finalWithholdingTax,
         currency,
         totalValue: type === 'dividend' ? finalPrice : finalShares * finalPrice,
+        exchangeRate: finalExchangeRate,
       };
 
       if (type === 'sell') {
@@ -218,7 +240,8 @@ export function TransactionForm({
         (type === 'sell' && !useManualPL) ? relatedBuyId : undefined,
         finalWithholdingTax,
         currency,
-        finalManualPL
+        finalManualPL,
+        finalExchangeRate
       );
 
       const messages: Record<TransactionType, string> = {
@@ -240,6 +263,7 @@ export function TransactionForm({
       setInputMode('units');
       setManualPL('');
       setUseManualPL(false);
+      setExchangeRate('');
     }
   };
 
@@ -367,6 +391,26 @@ export function TransactionForm({
                 </div>
               </div>
 
+              {currency === 'USD' && (
+                <div className="space-y-2">
+                  <Label htmlFor="exchangeRate" className="font-bold uppercase text-sm">
+                    อัตราแลกเปลี่ยน (บาท/ดอลลาร์)
+                  </Label>
+                  <Input
+                    id="exchangeRate"
+                    type="number"
+                    step="0.01"
+                    placeholder="34.50"
+                    value={exchangeRate}
+                    onChange={(e) => setExchangeRate(e.target.value)}
+                    className="border-2 border-foreground font-mono"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    * ระบุเพื่อคำนวณต้นทุนเป็นเงินบาทให้แม่นยำ (ถ้าไม่รู้ให้เว้นว่างหรือใช้ค่าปัจจุบัน)
+                  </p>
+                </div>
+              )}
+
               {type === 'dividend' && (
                 <div className="space-y-2">
                   <Label htmlFor="withholdingTax" className="font-bold uppercase text-sm">
@@ -431,16 +475,59 @@ export function TransactionForm({
                 <Label htmlFor="category" className="font-bold uppercase text-sm">
                   หมวดหมู่พอร์ต
                 </Label>
-                <Select value={category} onValueChange={(v) => setCategory(v as PortfolioCategory)}>
-                  <SelectTrigger className="border-2 border-foreground">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="securities">หลักทรัพย์</SelectItem>
-                    <SelectItem value="long-term">พอร์ตระยะยาว</SelectItem>
-                    <SelectItem value="speculation">พอร์ตเก็งกำไร</SelectItem>
-                  </SelectContent>
-                </Select>
+                {!isCustomCategory ? (
+                  <Select
+                    value={defaultCategories.includes(category) || allCategories.includes(category) ? category : 'new'}
+                    onValueChange={(v) => {
+                      if (v === 'new') {
+                        setIsCustomCategory(true);
+                        setCategory('');
+                      } else {
+                        setCategory(v);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="border-2 border-foreground">
+                      <SelectValue placeholder="เลือกหมวดหมู่" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allCategories.map(c => (
+                        <SelectItem key={c} value={c}>
+                          {c === 'securities' ? 'หลักทรัพย์' :
+                            c === 'long-term' ? 'พอร์ตระยะยาว' :
+                              c === 'speculation' ? 'พอร์ตเก็งกำไร' : c}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="new" className="text-primary font-bold">
+                        + เพิ่มหมวดหมู่ใหม่...
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="ชื่อหมวดหมู่ใหม่ (เช่น ลงทุน 5หมื่น)"
+                      value={customCategory}
+                      onChange={(e) => {
+                        setCustomCategory(e.target.value);
+                        setCategory(e.target.value); // Update actual category immediately
+                      }}
+                      className="border-2 border-foreground font-bold"
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setIsCustomCategory(false);
+                        setCategory('securities'); // Reset to default
+                      }}
+                      className="border-2 border-foreground"
+                    >
+                      ยกเลิก
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {type === 'sell' && (

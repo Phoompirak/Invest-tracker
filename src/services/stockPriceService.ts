@@ -19,7 +19,7 @@ export async function fetchHistoricalPrices(ticker: string, range: string = '5y'
 
         // Special handling for Gold (Dime MTS-GOLD style)
         if (ticker.toUpperCase().includes('GOLD')) {
-            symbol = 'GC=F'; // Gold Futures
+            symbol = 'XAUUSD=X'; // Gold Spot Price (More reliable than GC=F)
         } else if (currency === 'USD' || ticker.includes('.') || ticker.includes('=')) {
             // Suffix already present or definitely international
             symbol = ticker;
@@ -68,10 +68,29 @@ export async function fetchCurrentPrices(items: { ticker: string; currency: 'THB
     // Fetch in parallel
     const promises = items.map(async ({ ticker, currency }) => {
         try {
-            const data = await fetchHistoricalPrices(ticker, '1d', '1d', currency);
+            // Special fallback logic for Gold
+            let searchTicker = ticker;
+            if (ticker.toUpperCase().includes('GOLD')) {
+                searchTicker = 'XAUUSD=X';
+            } else if (currency !== 'USD' && !ticker.includes('.') && !ticker.includes('=')) {
+                searchTicker = `${ticker}.BK`;
+            }
+
+            // Use 5d range to ensure we find a closing price even on weekends/holidays
+            let data = await fetchHistoricalPrices(searchTicker, '5d', '1d', currency);
+
+            // Fallback for Gold if XAUUSD=X fails
+            if (ticker.toUpperCase().includes('GOLD') && (!data || data.length === 0)) {
+                console.warn('XAUUSD=X failed, trying GC=F fallback');
+                data = await fetchHistoricalPrices('GC=F', '5d', '1d', currency);
+            }
+
             if (data.length > 0) {
                 // Get the last available price
                 prices[ticker] = data[data.length - 1].price;
+            } else {
+                // Determine fallback only if we really can't find it
+                console.warn(`No price found for ${ticker} (searched as ${searchTicker})`);
             }
         } catch (error) {
             console.error(`Failed to fetch current price for ${ticker}`, error);

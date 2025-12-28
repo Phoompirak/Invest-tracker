@@ -9,7 +9,6 @@ interface BottomNavProps {
 const navItems = [
   { id: 'dashboard', label: 'หน้าหลัก', icon: Home },
   { id: 'charts', label: 'ลงทุน', icon: TrendingUp },
-  { id: 'holdings', label: 'สินทรัพย์', icon: Wallet },
   { id: 'transaction', label: 'รายการ', icon: List },
   { id: 'profile', label: 'อื่น', icon: User },
 ];
@@ -21,15 +20,15 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
           const Icon = item.icon;
-          
+
           return (
             <button
               key={item.id}
               onClick={() => onTabChange(item.id)}
               className={cn(
                 "flex flex-col items-center gap-1 px-4 py-2 min-w-[64px] transition-colors",
-                isActive 
-                  ? "text-primary" 
+                isActive
+                  ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >

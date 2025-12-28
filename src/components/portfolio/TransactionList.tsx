@@ -39,6 +39,7 @@ interface TransactionListProps {
   // Helper functions needed for Edit Form
   buyTransactions: Transaction[];
   getBuyTransactionsForSale: (ticker: string) => Transaction[];
+  existingCategories?: string[];
 }
 
 export function TransactionList({
@@ -47,7 +48,8 @@ export function TransactionList({
   onUpdate,
   onFilter,
   buyTransactions,
-  getBuyTransactionsForSale
+  getBuyTransactionsForSale,
+  existingCategories = []
 }: TransactionListProps) {
   const [filters, setFilters] = useState<FilterOptions>({
     profitOnly: false,
@@ -135,6 +137,7 @@ export function TransactionList({
                 getBuyTransactionsForSale={getBuyTransactionsForSale}
                 initialData={editingTransaction}
                 onCancel={() => setEditingTransaction(null)}
+                existingCategories={existingCategories}
               />
             </div>
           </DialogContent>
@@ -184,9 +187,12 @@ export function TransactionList({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">ทั้งหมด</SelectItem>
-                <SelectItem value="securities">หลักทรัพย์</SelectItem>
-                <SelectItem value="long-term">ระยะยาว</SelectItem>
-                <SelectItem value="speculation">เก็งกำไร</SelectItem>
+                {/* Default ones first if needed, or just sort all */}
+                {Array.from(new Set(['securities', 'long-term', 'speculation', ...existingCategories])).map(c => (
+                  <SelectItem key={c} value={c}>
+                    {getCategoryLabel(c)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -203,7 +209,7 @@ export function TransactionList({
                 <TableHead className="font-bold uppercase text-right">จำนวน</TableHead>
                 <TableHead className="font-bold uppercase text-right">ราคา</TableHead>
                 <TableHead className="font-bold uppercase text-right">มูลค่า</TableHead>
-                <TableHead className="font-bold uppercase text-right">ค่าธรรมเนียม</TableHead>
+                <TableHead className="font-bold uppercase text-right">ค่าธรรมเนียม/ภาษี</TableHead>
                 <TableHead className="font-bold uppercase text-right">กำไร/ขาดทุน</TableHead>
                 <TableHead className="font-bold uppercase text-center">หมวดหมู่</TableHead>
                 <TableHead className="font-bold uppercase text-center">จัดการ</TableHead>
@@ -222,9 +228,9 @@ export function TransactionList({
                       <Badge
                         variant="outline"
                         className={`border-2 font-bold uppercase ${transaction.type === 'buy'
-                          ? 'border-chart-2 text-chart-2 bg-chart-2/10'
+                          ? 'border-green-500 text-green-500 bg-green-500/10'
                           : transaction.type === 'sell'
-                            ? 'border-destructive text-destructive bg-destructive/10'
+                            ? 'border-red-500 text-red-500 bg-red-500/10'
                             : 'border-amber-500 text-amber-600 bg-amber-50'
                           }`}
                       >
@@ -256,11 +262,17 @@ export function TransactionList({
                       {formatCurrency(transaction.totalValue, currency)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-muted-foreground">
-                      {formatCurrency(transaction.commission, currency)}
+                      {transaction.type === 'dividend' && transaction.withholdingTax ? (
+                        <span className="text-amber-600/70" title="ภาษีหัก ณ ที่จ่าย">
+                          {formatCurrency(transaction.withholdingTax, currency)}
+                        </span>
+                      ) : (
+                        formatCurrency(transaction.commission, currency)
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       {transaction.type === 'sell' && transaction.realizedPL !== undefined ? (
-                        <span className={`font-mono font-medium ${transaction.realizedPL >= 0 ? 'text-chart-2' : 'text-destructive'
+                        <span className={`font-mono font-medium ${transaction.realizedPL >= 0 ? 'text-green-500' : 'text-red-500'
                           }`}>
                           {formatCurrency(transaction.realizedPL, currency)}
                           <span className="block text-xs">
