@@ -1,6 +1,6 @@
 import { Transaction } from "@/types/portfolio";
 
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const CORS_PROXY = 'https://corsproxy.io/?';
 const YAHOO_BASE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
 
 export interface StockPrice {
@@ -68,28 +68,89 @@ export async function fetchCurrentPrices(items: { ticker: string; currency: 'THB
     // Fetch in parallel
     const promises = items.map(async ({ ticker, currency }) => {
         try {
-            // Special fallback logic for Gold
             let searchTicker = ticker;
+
+            // Determine the correct Yahoo Finance symbol
             if (ticker.toUpperCase().includes('GOLD')) {
                 searchTicker = 'XAUUSD=X';
-            } else if (currency !== 'USD' && !ticker.includes('.') && !ticker.includes('=')) {
+            } else if (currency === 'USD') {
+                // US stocks - use ticker as-is
+                searchTicker = ticker;
+            } else if (!ticker.includes('.') && !ticker.includes('=')) {
+                // Thai stocks - add .BK suffix
                 searchTicker = `${ticker}.BK`;
             }
 
-            // Use 5d range to ensure we find a closing price even on weekends/holidays
-            let data = await fetchHistoricalPrices(searchTicker, '5d', '1d', currency);
+            // Fetch with the processed ticker
+            // Pass 'USD' as currency to prevent fetchHistoricalPrices from adding .BK suffix again
+            const url = `${YAHOO_BASE_URL}/${searchTicker}?interval=1d&range=5d`;
+            const response = await fetch(`${CORS_PROXY}${encodeURIComponent(url)}`);
 
-            // Fallback for Gold if XAUUSD=X fails
-            if (ticker.toUpperCase().includes('GOLD') && (!data || data.length === 0)) {
-                console.warn('XAUUSD=X failed, trying GC=F fallback');
-                data = await fetchHistoricalPrices('GC=F', '5d', '1d', currency);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch for ${ticker}`);
             }
 
-            if (data.length > 0) {
-                // Get the last available price
-                prices[ticker] = data[data.length - 1].price;
-            } else {
-                // Determine fallback only if we really can't find it
+            const data = await response.json();
+
+            if (data.chart && data.chart.result && data.chart.result.length > 0) {
+                const result = data.chart.result[0];
+                if (result && result.indicators && result.indicators.quote[0]) {
+                    const closes = result.indicators.quote[0].close;
+                    // Get the last non-null close price
+                    for (let i = closes.length - 1; i >= 0; i--) {
+                        if (closes[i] != null && closes[i] > 0) {
+                            prices[ticker] = closes[i];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Fallback for Gold if primary failed
+            if (ticker.toUpperCase().includes('GOLD') && !prices[ticker]) {
+                console.warn('XAUUSD=X failed, trying GC=F fallback');
+                const fallbackUrl = `${YAHOO_BASE_URL}/GC=F?interval=1d&range=5d`;
+                const fallbackResponse = await fetch(`${CORS_PROXY}${encodeURIComponent(fallbackUrl)}`);
+                if (fallbackResponse.ok) {
+                    const fallbackData = await fallbackResponse.json();
+                    if (fallbackData.chart?.result?.[0]?.indicators?.quote?.[0]?.close) {
+                        const closes = fallbackData.chart.result[0].indicators.quote[0].close;
+                        for (let i = closes.length - 1; i >= 0; i--) {
+                            if (closes[i] != null && closes[i] > 0) {
+                                prices[ticker] = closes[i];
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fallback for Thai stocks (.BK) => Try raw ticker (US) if failed
+            // This helps if user forgot to set currency to USD for a US stock
+            if (!prices[ticker] && searchTicker.endsWith('.BK')) {
+                const rawTicker = ticker;
+                console.warn(`${searchTicker} failed, trying raw ticker ${rawTicker} as fallback`);
+                const rawUrl = `${YAHOO_BASE_URL}/${rawTicker}?interval=1d&range=5d`;
+                try {
+                    const rawResponse = await fetch(`${CORS_PROXY}${encodeURIComponent(rawUrl)}`);
+                    if (rawResponse.ok) {
+                        const rawData = await rawResponse.json();
+                        if (rawData.chart?.result?.[0]?.indicators?.quote?.[0]?.close) {
+                            const closes = rawData.chart.result[0].indicators.quote[0].close;
+                            for (let i = closes.length - 1; i >= 0; i--) {
+                                if (closes[i] != null && closes[i] > 0) {
+                                    prices[ticker] = closes[i];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Fallback fetch for ${rawTicker} failed`, e);
+                }
+            }
+
+            if (!prices[ticker]) {
                 console.warn(`No price found for ${ticker} (searched as ${searchTicker})`);
             }
         } catch (error) {

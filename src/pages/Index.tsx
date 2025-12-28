@@ -10,9 +10,11 @@ import { LoginScreen } from "@/components/auth/LoginScreen";
 import { Helmet } from "react-helmet-async";
 import { Button } from "@/components/ui/button";
 import { Cloud, CloudOff, RefreshCw, LogOut } from "lucide-react";
+import { SettingsTab } from "@/components/portfolio/SettingsTab";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [currency, setCurrency] = useState<'THB' | 'USD'>('THB');
   const { isAuthenticated, isLoading: authLoading, user, signOut } = useAuth();
   const {
     transactions,
@@ -99,14 +101,7 @@ const Index = () => {
                 {user?.picture && (
                   <img src={user.picture} alt="" className="w-6 h-6 rounded-full" />
                 )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={signOut}
-                  className="h-7 px-2 text-muted-foreground"
-                >
-                  <LogOut className="w-3 h-3" />
-                </Button>
+                {/* Logout moved to Settings Tab */}
               </div>
             </div>
           </div>
@@ -121,6 +116,7 @@ const Index = () => {
               exchangeRate={exchangeRate}
               transactions={transactions}
               onUpdateTransaction={updateTransaction}
+              currency={currency}
             />
           )}
 
@@ -156,70 +152,23 @@ const Index = () => {
           )}
 
           {activeTab === 'profile' && (
-            <div className="px-4 py-6 pb-24">
-              <h1 className="text-xl font-bold mb-6">ตั้งค่า</h1>
-
-              {/* User Info */}
-              <div className="bg-card rounded-xl p-4 mb-6">
-                <div className="flex items-center gap-4">
-                  {user?.picture && (
-                    <img src={user.picture} alt="" className="w-16 h-16 rounded-full" />
-                  )}
-                  <div>
-                    <h2 className="font-semibold">{user?.name}</h2>
-                    <p className="text-sm text-muted-foreground">{user?.email}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sync Info */}
-              <div className="bg-card rounded-xl p-4 mb-6">
-                <h3 className="font-semibold mb-3">สถานะการซิงค์</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">สถานะ</span>
-                    <span className={isOnline ? "text-emerald-500" : "text-amber-500"}>
-                      {isOnline ? "ออนไลน์" : "ออฟไลน์"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">รายการรอซิงค์</span>
-                    <span>{pendingCount}</span>
-                  </div>
-                  {lastSynced && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">ซิงค์ล่าสุด</span>
-                      <span>{lastSynced.toLocaleString('th-TH')}</span>
-                    </div>
-                  )}
-                </div>
-                {pendingCount > 0 && isOnline && (
-                  <Button onClick={manualSync} disabled={isSyncing} className="w-full mt-4">
-                    {isSyncing ? "กำลังซิงค์..." : "ซิงค์ตอนนี้"}
-                  </Button>
-                )}
-              </div>
-
-              {/* Danger Zone */}
-              <div className="bg-card rounded-xl p-4 mb-6 border border-destructive/20">
-                <h3 className="font-semibold mb-3 text-destructive">พื้นที่อันตราย</h3>
-                <Button
-                  variant="outline"
-                  className="w-full border-destructive text-destructive hover:bg-destructive hover:text-white"
-                  onClick={resetPortfolio}
-                >
-                  ล้างข้อมูลทั้งหมด (Reset Portfolio)
-                </Button>
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                  ข้อมูลทั้งหมดทั้งในเครื่องและ Google Sheets จะถูกลบถาวร
-                </p>
-              </div>
-
-              {/* Logout */}
-              <Button variant="destructive" onClick={signOut} className="w-full">
-                ออกจากระบบ
-              </Button>
-            </div>
+            <SettingsTab
+              user={user}
+              signOut={signOut}
+              isOnline={isOnline}
+              isSyncing={isSyncing}
+              pendingCount={pendingCount}
+              lastSynced={lastSynced}
+              manualSync={manualSync}
+              resetPortfolio={resetPortfolio}
+              currency={currency}
+              setCurrency={setCurrency}
+              transactions={transactions}
+              onUpdateTransaction={updateTransaction}
+              holdings={holdings}
+              summary={summary}
+              exchangeRate={exchangeRate}
+            />
           )}
         </div>
 

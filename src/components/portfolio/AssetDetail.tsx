@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Holding, Transaction, TransactionType } from "@/types/portfolio";
 import {
     TrendingUp,
@@ -10,10 +10,15 @@ import {
     Info,
     Plus,
     Minus,
-    DollarSign
+    DollarSign,
+    HelpCircle,
+    Coins,
+    PiggyBank,
+    CircleDollarSign
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface AssetDetailProps {
     holding: Holding;
@@ -78,106 +83,174 @@ export function AssetDetail({
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-md p-0 overflow-hidden border-2 border-foreground rounded-2xl">
-                <DialogHeader className="p-6 pb-0">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <Badge variant="outline" className="mb-2 border-primary text-primary font-bold uppercase">
-                                {holding.category === 'long-term' ? 'ระยะยาว' :
-                                    holding.category === 'speculation' ? 'เก็งกำไร' : 'หลักทรัพย์'}
-                            </Badge>
-                            <DialogTitle className="text-3xl font-black uppercase tracking-tight">{holding.ticker}</DialogTitle>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-xs text-muted-foreground uppercase font-bold">มูลค่าปัจจุบัน</p>
-                            <p className="text-2xl font-black font-mono">
-                                {formatCurrency(convertValue(holding.marketValue))}
-                            </p>
-                        </div>
-                    </div>
-                </DialogHeader>
-
-                <div className="p-6 space-y-6">
-                    {/* Performance Card */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <Card className="p-4 border-2 border-foreground bg-secondary/30 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                            <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">กำไร/ขาดทุนสะสม</p>
-                            <div className={`flex items-center gap-1 font-bold ${holding.unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                {holding.unrealizedPL >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                                <span className="font-mono text-lg">{formatPercent(holding.unrealizedPLPercent)}</span>
+                <TooltipProvider>
+                    <DialogHeader className="p-6 pb-4 bg-gradient-to-br from-primary/10 to-secondary/20">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <Badge variant="outline" className="mb-2 border-primary text-primary font-bold uppercase">
+                                    {holding.category === 'long-term' ? 'ระยะยาว' :
+                                        holding.category === 'speculation' ? 'เก็งกำไร' : holding.category === 'securities' ? 'หลักทรัพย์' : holding.category}
+                                </Badge>
+                                <DialogTitle className="text-3xl font-black uppercase tracking-tight">{holding.ticker}</DialogTitle>
+                                <DialogDescription className="text-sm text-muted-foreground mt-1">
+                                    {holding.totalShares.toLocaleString(undefined, { maximumFractionDigits: 6 })} {holding.ticker.includes('GOLD') ? 'ออนซ์' : 'หุ้น'}
+                                </DialogDescription>
                             </div>
-                            <p className="text-xs font-mono opacity-70">({formatCurrency(convertValue(holding.unrealizedPL))})</p>
-                        </Card>
-
-                        <Card className="p-4 border-2 border-foreground bg-secondary/30 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                            <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">กำไรที่ขายออกไปแล้ว</p>
-                            <div className={`flex items-center gap-1 font-bold ${totalRealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                <ArrowUpRight className="h-4 w-4" />
-                                <span className="font-mono text-lg">{formatCurrency(totalRealizedPL)}</span>
-                            </div>
-                            <p className="text-[9px] text-muted-foreground">(Realized P/L)</p>
-                        </Card>
-                    </div>
-
-                    {/* Capital Info */}
-                    <div className="bg-foreground text-background p-4 rounded-xl space-y-3">
-                        <div className="flex justify-between items-center text-sm">
-                            <div className="flex items-center gap-2 opacity-80">
-                                <Wallet className="h-4 w-4" />
-                                <span>ต้นทุนทั้งหมด (Invested)</span>
-                            </div>
-                            <span className="font-mono font-bold">{formatCurrency(totalCashInvested)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <div className="flex items-center gap-2 opacity-80">
-                                <ArrowDownRight className="h-4 w-4" />
-                                <span>ถอนทุนคืนแล้ว (Withdrawn)</span>
-                            </div>
-                            <span className="font-mono font-bold">{formatCurrency(totalWithdrawn)}</span>
-                        </div>
-                        <div className="h-[1px] bg-background/20 my-1" />
-                        <div className="flex justify-between items-center">
-                            <span className="font-bold">ต้นทุนคงเหลือในพอร์ต</span>
-                            <span className="font-mono font-bold text-xl">{formatCurrency(convertValue(holding.totalInvested))}</span>
-                        </div>
-                    </div>
-
-                    {/* History List */}
-                    <div>
-                        <div className="flex items-center gap-2 mb-3">
-                            <History className="h-4 w-4 text-primary" />
-                            <h3 className="font-bold uppercase text-sm tracking-wider">ประวัติรายการ</h3>
-                        </div>
-                        <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                            {assetTransactions.map((t) => (
-                                <div key={t.id} className="flex items-center justify-between p-3 border-2 border-foreground rounded-lg bg-background hover:bg-secondary/20 transition-colors">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-1.5 rounded-md ${t.type === 'buy' ? 'bg-green-100 text-green-700' :
-                                            t.type === 'sell' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                                            }`}>
-                                            {t.type === 'buy' ? <Plus className="h-4 w-4" /> :
-                                                t.type === 'sell' ? <Minus className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold uppercase">{t.type === 'buy' ? 'ซื้อ' : t.type === 'sell' ? 'ขาย' : 'ปันผล'}</p>
-                                            <p className="text-[10px] text-muted-foreground">{new Date(t.timestamp).toLocaleDateString('th-TH')}</p>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-sm font-bold font-mono">
-                                            {t.type !== 'dividend' && `${t.shares.toLocaleString()} @ `}
-                                            {t.currency === 'USD' ? '$' : '฿'}{t.pricePerShare.toLocaleString()}
-                                        </p>
-                                        {t.realizedPL !== undefined && (
-                                            <p className={`text-[10px] font-bold ${t.realizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                {t.realizedPL >= 0 ? '+' : ''}{t.realizedPL.toLocaleString()} {t.currency}
-                                            </p>
-                                        )}
-                                    </div>
+                            <div className="text-right">
+                                <div className="flex items-center gap-1 justify-end">
+                                    <p className="text-xs text-muted-foreground uppercase font-bold">มูลค่าปัจจุบัน</p>
+                                    <Tooltip>
+                                        <TooltipTrigger><HelpCircle className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
+                                        <TooltipContent><p>ราคาตลาด x จำนวนหุ้นที่ถืออยู่</p></TooltipContent>
+                                    </Tooltip>
                                 </div>
-                            ))}
+                                <p className="text-2xl font-black font-mono">
+                                    {formatCurrency(convertValue(holding.marketValue))}
+                                </p>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    <div className="p-6 pt-4 space-y-5">
+                        {/* Performance Cards - Clearer Labels */}
+                        <div className="grid grid-cols-2 gap-3">
+                            {/* Unrealized P/L Card */}
+                            <Card className="p-4 border-2 border-foreground bg-secondary/30 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                                <div className="flex items-center gap-1 mb-2">
+                                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                                    <p className="text-[10px] uppercase font-bold text-muted-foreground">กำไรทางบัญชี</p>
+                                    <Tooltip>
+                                        <TooltipTrigger><HelpCircle className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
+                                        <TooltipContent className="max-w-[200px]">
+                                            <p className="font-bold">Unrealized P/L</p>
+                                            <p>กำไร/ขาดทุนที่ยังไม่ได้ขาย = มูลค่าปัจจุบัน - ต้นทุน</p>
+                                            <p className="text-xs opacity-70 mt-1">*เปลี่ยนแปลงตามราคาตลาด</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </div>
+                                <div className={`flex items-center gap-1 font-bold ${holding.unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                    {holding.unrealizedPL >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+                                    <span className="font-mono text-xl">{formatPercent(holding.unrealizedPLPercent)}</span>
+                                </div>
+                                <p className={`text-sm font-mono mt-1 ${holding.unrealizedPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {holding.unrealizedPL >= 0 ? '+' : ''}{formatCurrency(convertValue(holding.unrealizedPL))}
+                                </p>
+                                <p className="text-[9px] text-muted-foreground mt-1">ยังไม่ได้ขาย</p>
+                            </Card>
+
+                            {/* Realized P/L Card */}
+                            <Card className="p-4 border-2 border-foreground bg-secondary/30 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                                <div className="flex items-center gap-1 mb-2">
+                                    <CircleDollarSign className="h-4 w-4 text-muted-foreground" />
+                                    <p className="text-[10px] uppercase font-bold text-muted-foreground">กำไรจากการขาย</p>
+                                    <Tooltip>
+                                        <TooltipTrigger><HelpCircle className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
+                                        <TooltipContent className="max-w-[200px]">
+                                            <p className="font-bold">Realized P/L</p>
+                                            <p>กำไร/ขาดทุนที่รับรู้แล้ว = ราคาขาย - ราคาซื้อ (หลังหักค่าธรรมเนียม)</p>
+                                            <p className="text-xs opacity-70 mt-1">*เงินที่ได้จริงเข้ากระเป๋าแล้ว</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </div>
+                                <div className={`flex items-center gap-1 font-bold ${totalRealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                    <Coins className="h-5 w-5" />
+                                    <span className="font-mono text-xl">{formatCurrency(totalRealizedPL)}</span>
+                                </div>
+                                <p className="text-[9px] text-muted-foreground mt-2">เข้ากระเป๋าแล้ว</p>
+                            </Card>
+                        </div>
+
+                        {/* Capital Info - Clearer Structure */}
+                        <div className="bg-foreground text-background p-4 rounded-xl space-y-3">
+                            <div className="flex items-center gap-2 border-b border-background/20 pb-2 mb-2">
+                                <PiggyBank className="h-5 w-5" />
+                                <span className="font-bold uppercase text-sm">ข้อมูลต้นทุน</span>
+                            </div>
+
+                            <div className="flex justify-between items-center text-sm">
+                                <div className="flex items-center gap-2 opacity-80">
+                                    <Wallet className="h-4 w-4" />
+                                    <span>เงินที่ใส่ไปทั้งหมด</span>
+                                    <Tooltip>
+                                        <TooltipTrigger><HelpCircle className="h-3 w-3 opacity-60" /></TooltipTrigger>
+                                        <TooltipContent><p>รวมเงินที่ซื้อหุ้นตัวนี้ทั้งหมด + ค่าธรรมเนียม</p></TooltipContent>
+                                    </Tooltip>
+                                </div>
+                                <span className="font-mono font-bold">{formatCurrency(totalCashInvested)}</span>
+                            </div>
+
+                            <div className="flex justify-between items-center text-sm">
+                                <div className="flex items-center gap-2 opacity-80">
+                                    <ArrowDownRight className="h-4 w-4" />
+                                    <span>เงินที่ขายออกมาแล้ว</span>
+                                    <Tooltip>
+                                        <TooltipTrigger><HelpCircle className="h-3 w-3 opacity-60" /></TooltipTrigger>
+                                        <TooltipContent><p>เงินที่ได้จากการขายหุ้นตัวนี้ (ไม่รวมกำไร/ขาดทุน)</p></TooltipContent>
+                                    </Tooltip>
+                                </div>
+                                <span className="font-mono font-bold">{formatCurrency(totalWithdrawn)}</span>
+                            </div>
+
+                            <div className="h-[1px] bg-background/30 my-2" />
+
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-bold">💰 ต้นทุนคงเหลือในพอร์ต</span>
+                                </div>
+                                <span className="font-mono font-bold text-xl">{formatCurrency(convertValue(holding.totalInvested))}</span>
+                            </div>
+
+                            <div className="flex justify-between items-center text-sm opacity-70">
+                                <span>ต้นทุนเฉลี่ยต่อหุ้น</span>
+                                <span className="font-mono">{formatCurrency(holding.averageCost)}</span>
+                            </div>
+                        </div>
+
+                        {/* History List */}
+                        <div>
+                            <div className="flex items-center gap-2 mb-3">
+                                <History className="h-4 w-4 text-primary" />
+                                <h3 className="font-bold uppercase text-sm tracking-wider">ประวัติรายการ ({assetTransactions.length})</h3>
+                            </div>
+                            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
+                                {assetTransactions.length === 0 ? (
+                                    <p className="text-center text-muted-foreground py-4">ไม่มีประวัติรายการ</p>
+                                ) : assetTransactions.map((t) => (
+                                    <div key={t.id} className="flex items-center justify-between p-3 border-2 border-foreground rounded-lg bg-background hover:bg-secondary/20 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-1.5 rounded-md ${t.type === 'buy' ? 'bg-green-100 text-green-700' :
+                                                t.type === 'sell' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                                                }`}>
+                                                {t.type === 'buy' ? <Plus className="h-4 w-4" /> :
+                                                    t.type === 'sell' ? <Minus className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold uppercase">{t.type === 'buy' ? '🟢 ซื้อ' : t.type === 'sell' ? '🔴 ขาย' : '💵 ปันผล'}</p>
+                                                <p className="text-[10px] text-muted-foreground">{new Date(t.timestamp).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })}</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm font-bold font-mono">
+                                                {t.type !== 'dividend' && `${t.shares.toLocaleString(undefined, { maximumFractionDigits: 4 })} @ `}
+                                                {t.currency === 'USD' ? '$' : '฿'}{t.pricePerShare.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                            </p>
+                                            {t.type === 'sell' && t.realizedPL !== undefined && (
+                                                <p className={`text-[10px] font-bold ${t.realizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                    กำไร: {t.realizedPL >= 0 ? '+' : ''}{t.realizedPL.toLocaleString(undefined, { maximumFractionDigits: 2 })} {t.currency}
+                                                </p>
+                                            )}
+                                            {t.type === 'buy' && (
+                                                <p className="text-[10px] text-muted-foreground">
+                                                    รวม: {t.currency === 'USD' ? '$' : '฿'}{t.totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
-                </div>
+                </TooltipProvider>
             </DialogContent>
         </Dialog>
     );
