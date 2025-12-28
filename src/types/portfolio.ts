@@ -1,4 +1,4 @@
-export type TransactionType = 'buy' | 'sell';
+export type TransactionType = 'buy' | 'sell' | 'dividend';
 
 export type PortfolioCategory = 'securities' | 'long-term' | 'speculation';
 
@@ -15,6 +15,9 @@ export interface Transaction {
   relatedBuyId?: string; // For sell transactions linked to specific buy
   realizedPL?: number; // Profit/Loss for sell transactions
   realizedPLPercent?: number;
+  dividendPerShare?: number; // For dividend transactions
+  withholdingTax?: number; // Tax withheld on dividends
+  currency?: 'THB' | 'USD';
 }
 
 export interface Holding {
@@ -34,6 +37,7 @@ export interface PortfolioSummary {
   totalInvested: number;
   totalRealizedPL: number;
   totalUnrealizedPL: number;
+  totalDividends: number;
   totalPL: number;
   totalPLPercent: number;
   bestPerformer: Holding | null;

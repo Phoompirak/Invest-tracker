@@ -140,3 +140,10 @@ export function isOnline(): boolean {
 export function hasPendingChanges(): boolean {
     return getPendingChanges().length > 0;
 }
+// Reset all local data
+export function resetLocalData(): void {
+    localStorage.removeItem(TRANSACTIONS_KEY);
+    localStorage.removeItem(PENDING_CHANGES_KEY);
+    localStorage.removeItem(LAST_SYNCED_KEY);
+    // We intentionally keep SPREADSHEET_ID_KEY so we can reuse/clear the same sheet
+}

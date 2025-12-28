@@ -19,20 +19,13 @@ import {
   syncPendingChanges,
 } from '@/services/sheetsService';
 
-// Simulated current prices (in a real app, this would come from an API)
-const currentPrices: Record<string, number> = {
-  'PTT': 37.25,
-  'SCB': 128.50,
-  'KBANK': 138.00,
-  'DELTA': 620.00,
-  'AOT': 68.50,
-  'CPALL': 62.00,
-  'TRUE': 11.20,
-  'ADVANC': 245.00,
-};
+import { fetchCurrentPrices, fetchExchangeRate } from '@/services/stockPriceService';
 
 export function usePortfolio() {
   const { isAuthenticated, isGapiReady } = useAuth();
+  const [currentPrices, setCurrentPrices] = useState<Record<string, number>>({});
+  const [exchangeRate, setExchangeRate] = useState<number>(34.5); // Default THB/USD
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -105,6 +98,40 @@ export function usePortfolio() {
     return () => window.removeEventListener('online', handleOnline);
   }, [isAuthenticated, isGapiReady, spreadsheetId]);
 
+  // Fetch current prices for all tickers in portfolio
+  useEffect(() => {
+    const fetchPrices = async () => {
+      if (!isOnline()) return;
+
+      // Get unique ticker + currency combinations
+      const uniqueItemsMap = new Map<string, { ticker: string; currency: 'THB' | 'USD' }>();
+      transactions.forEach(t => {
+        if (!uniqueItemsMap.has(t.ticker)) {
+          uniqueItemsMap.set(t.ticker, { ticker: t.ticker, currency: t.currency || 'THB' });
+        }
+      });
+      const items = Array.from(uniqueItemsMap.values());
+
+      if (items.length === 0) return;
+
+      try {
+        const prices = await fetchCurrentPrices(items);
+        setCurrentPrices(prev => ({ ...prev, ...prices }));
+
+        // Fetch USD rate
+        const rate = await fetchExchangeRate();
+        setExchangeRate(rate);
+      } catch (error) {
+        console.error('Error fetching prices:', error);
+      }
+    };
+
+    fetchPrices();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchPrices, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [transactions]);
+
   const addTransaction = useCallback(async (
     ticker: string,
     type: TransactionType,
@@ -113,19 +140,34 @@ export function usePortfolio() {
     commission: number,
     timestamp: Date,
     category: PortfolioCategory,
-    relatedBuyId?: string
+    relatedBuyId?: string,
+    withholdingTax?: number,
+    currency?: 'THB' | 'USD',
+    manualRealizedPL?: number
   ) => {
-    const totalValue = shares * pricePerShare;
+    // For dividends: totalValue is the dividend amount (pricePerShare)
+    const totalValue = type === 'dividend' ? pricePerShare : shares * pricePerShare;
 
-    let realizedPL: number | undefined;
+    let realizedPL: number | undefined = manualRealizedPL;
     let realizedPLPercent: number | undefined;
 
-    if (type === 'sell' && relatedBuyId) {
-      const buyTransaction = transactions.find(t => t.id === relatedBuyId);
-      if (buyTransaction) {
-        const costBasis = buyTransaction.pricePerShare * shares;
-        realizedPL = totalValue - costBasis - commission;
-        realizedPLPercent = ((pricePerShare - buyTransaction.pricePerShare) / buyTransaction.pricePerShare) * 100;
+    if (type === 'sell') {
+      if (manualRealizedPL !== undefined) {
+        // Calculated based on manual input
+        realizedPL = manualRealizedPL;
+        // Recalculate percent based on cost derived from PL
+        // PL = Value - Cost - Comm -> Cost = Value - PL - Comm
+        const impliedCost = totalValue - manualRealizedPL - commission;
+        if (impliedCost > 0) {
+          realizedPLPercent = (manualRealizedPL / impliedCost) * 100;
+        }
+      } else if (relatedBuyId) {
+        const buyTransaction = transactions.find(t => t.id === relatedBuyId);
+        if (buyTransaction) {
+          const costBasis = buyTransaction.pricePerShare * shares;
+          realizedPL = totalValue - costBasis - commission;
+          realizedPLPercent = ((pricePerShare - buyTransaction.pricePerShare) / buyTransaction.pricePerShare) * 100;
+        }
       }
     }
 
@@ -142,6 +184,8 @@ export function usePortfolio() {
       relatedBuyId,
       realizedPL,
       realizedPLPercent,
+      withholdingTax: type === 'dividend' ? withholdingTax : undefined,
+      currency: currency || 'THB',
     };
 
     // Update local state immediately
@@ -230,8 +274,9 @@ export function usePortfolio() {
 
     setIsSyncing(true);
     try {
-      const sheetId = spreadsheetId || await findOrCreateSpreadsheet();
-      if (!spreadsheetId) setSpreadsheetId(sheetId);
+      // Always verify spreadsheet existence to handle cases where user deleted it
+      const sheetId = await findOrCreateSpreadsheet();
+      if (sheetId !== spreadsheetId) setSpreadsheetId(sheetId);
 
       await syncPendingChanges(sheetId);
       const remoteData = await fetchTransactions(sheetId);
@@ -249,12 +294,24 @@ export function usePortfolio() {
     const holdingsMap = new Map<string, { shares: number; totalCost: number; category: PortfolioCategory }>();
 
     transactions.forEach(t => {
+      // Skip dividends - they don't affect share count
+      if (t.type === 'dividend') return;
+
       const current = holdingsMap.get(t.ticker) || { shares: 0, totalCost: 0, category: t.category };
+
+      // Convert to THB if needed
+      const rate = t.currency === 'USD' ? exchangeRate : 1;
+      const transactionCost = (t.totalValue + t.commission) * rate;
 
       if (t.type === 'buy') {
         current.shares += t.shares;
-        current.totalCost += t.totalValue + t.commission;
+        current.totalCost += transactionCost;
       } else {
+        // Reduce cost basis proportionally
+        if (current.shares > 0) {
+          const costPerShare = current.totalCost / current.shares;
+          current.totalCost -= (costPerShare * t.shares);
+        }
         current.shares -= t.shares;
       }
 
@@ -264,8 +321,20 @@ export function usePortfolio() {
     return Array.from(holdingsMap.entries())
       .filter(([_, data]) => data.shares > 0)
       .map(([ticker, data]) => {
+        // Check if ticker is likely USD (no .BK and not in currentPrices as THB?) 
+        // Actually we assume currentPrices are in local currency of the stock from Yahoo
+        // If we entered it as USD, we treat price as USD.
+        // But here we rely on how we fetched prices. 
+        // Yahoo returns prices in the exchange's currency.
+        // If we fetched 'AAPL', it returns USD. If 'PTT.BK', THB.
+        // Simple heuristic: if we have a holding that was bought in USD, assume current price is USD.
+        // But what if we have mixed? Usually not for same ticker.
+        const isUsd = transactions.some(t => t.ticker === ticker && t.currency === 'USD');
+        const rate = isUsd ? exchangeRate : 1;
+
         const currentPrice = currentPrices[ticker] || 0;
-        const marketValue = data.shares * currentPrice;
+        // Market Value in THB
+        const marketValue = data.shares * currentPrice * rate;
         const unrealizedPL = marketValue - data.totalCost;
         const unrealizedPLPercent = data.totalCost > 0 ? (unrealizedPL / data.totalCost) * 100 : 0;
 
@@ -289,8 +358,17 @@ export function usePortfolio() {
     const totalUnrealizedPL = holdings.reduce((sum, h) => sum + h.unrealizedPL, 0);
     const totalRealizedPL = transactions
       .filter(t => t.type === 'sell' && t.realizedPL !== undefined)
-      .reduce((sum, t) => sum + (t.realizedPL || 0), 0);
-    const totalPL = totalRealizedPL + totalUnrealizedPL;
+      .reduce((sum, t) => {
+        const rate = t.currency === 'USD' ? exchangeRate : 1;
+        return sum + (t.realizedPL || 0) * rate;
+      }, 0);
+    const totalDividends = transactions
+      .filter(t => t.type === 'dividend')
+      .reduce((sum, t) => {
+        const rate = t.currency === 'USD' ? exchangeRate : 1;
+        return sum + (t.totalValue - (t.withholdingTax || 0)) * rate;
+      }, 0);
+    const totalPL = totalRealizedPL + totalUnrealizedPL + totalDividends;
     const totalPLPercent = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
 
     const sortedByPL = [...holdings].sort((a, b) => b.unrealizedPLPercent - a.unrealizedPLPercent);
@@ -300,6 +378,7 @@ export function usePortfolio() {
       totalInvested,
       totalRealizedPL,
       totalUnrealizedPL,
+      totalDividends,
       totalPL,
       totalPLPercent,
       bestPerformer: sortedByPL[0] || null,
@@ -335,62 +414,157 @@ export function usePortfolio() {
     date: string;
     commission?: number;
     category?: PortfolioCategory;
+    currency?: 'THB' | 'USD';
   }[]) => {
-    const newTransactions: Transaction[] = data.map(item => {
+    let addedCount = 0;
+    let skippedCount = 0;
+    const newTransactions: Transaction[] = [];
+
+    // Create a quick lookup set for existing transactions to improve performance
+    // Composite key: TICKER|TYPE|SHARES|PRICE|TIMESTAMP_EPOCH
+    const existingSet = new Set(
+      transactions.map(t =>
+        `${t.ticker}|${t.type}|${t.shares}|${t.pricePerShare}|${t.timestamp.getTime()}`
+      )
+    );
+
+    for (const item of data) {
       const pricePerShare = item.price;
       const totalValue = item.shares * pricePerShare;
+      // Ensure date is parsed correctly (handling potential timezones if needed, but assuming ISO string is sufficient)
       const timestamp = new Date(item.date);
       const commission = item.commission || 0;
+      const currency = item.currency || 'THB';
+      const type = item.type;
+      const ticker = item.ticker.toUpperCase();
+      const shares = item.shares;
 
-      return {
-        id: crypto.randomUUID(), // Use UUID for reliable unique IDs
-        ticker: item.ticker.toUpperCase(),
-        type: item.type,
-        shares: item.shares,
+      // Construct key for duplicate check
+      const key = `${ticker}|${type}|${shares}|${pricePerShare}|${timestamp.getTime()}`;
+
+      if (existingSet.has(key)) {
+        skippedCount++;
+        continue;
+      }
+
+      let realizedPL: number | undefined = undefined;
+      let realizedPLPercent: number | undefined = undefined;
+
+      // FIFO Logic for Sell during Import
+      if (type === 'sell') {
+        // Calculate manually based on FIFO
+        // 1. Gather all potential buys (existing + ones added in this batch so far)
+        const allBuys = [
+          ...transactions.filter(t => t.ticker === ticker && t.type === 'buy'),
+          ...newTransactions.filter(t => t.ticker === ticker && t.type === 'buy')
+        ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        let remainingSharesToSell = shares;
+        let totalCost = 0;
+
+        for (const buy of allBuys) {
+          if (remainingSharesToSell <= 0) break;
+          // Note: This logic assumes these buys are "available". 
+          // It effectively re-uses the same "all buys" logic as the frontend, 
+          // which assumes "Sold All" or "Matches History".
+          const usedShares = Math.min(buy.shares, remainingSharesToSell);
+          totalCost += usedShares * buy.pricePerShare;
+          remainingSharesToSell -= usedShares;
+        }
+
+        const sellTotalValue = shares * pricePerShare;
+        realizedPL = sellTotalValue - totalCost - commission;
+
+        const impliedCost = sellTotalValue - realizedPL - commission;
+        if (impliedCost > 0) {
+          realizedPLPercent = (realizedPL / impliedCost) * 100;
+        }
+      }
+
+      newTransactions.push({
+        id: crypto.randomUUID(),
+        ticker,
+        type,
+        shares,
         pricePerShare,
         totalValue,
         commission,
         timestamp,
         category: item.category || 'long-term',
-      };
-    });
+        currency,
+        realizedPL,
+        realizedPLPercent,
+      });
+      existingSet.add(key); // Add to set to prevent duplicates within the import file itself
+      addedCount++;
+    }
 
-    // Update local state immediately
-    setTransactions(prev => {
-      const updated = [...prev, ...newTransactions];
-      saveTransactions(updated);
-      return updated;
-    });
+    if (newTransactions.length > 0) {
+      // Update local state immediately
+      setTransactions(prev => {
+        const updated = [...prev, ...newTransactions];
+        saveTransactions(updated);
+        return updated;
+      });
 
-    // Sync to sheets or queue for later
-    if (isAuthenticated && isGapiReady && spreadsheetId && isOnline()) {
-      setIsSyncing(true);
-      try {
-        // We'll queue them first to ensure they are processed sequentially
-        // or we could implement a batch add function in sheetsService
-        // For now, let's queue them to be safe and simple
+      // Sync to sheets or queue for later
+      if (isAuthenticated && isGapiReady && spreadsheetId && isOnline()) {
+        setIsSyncing(true);
+        try {
+          for (const t of newTransactions) {
+            queueChange({ id: t.id, type: 'add', transaction: t, timestamp: new Date() });
+          }
+          setPendingCount(prev => prev + newTransactions.length);
+
+          // Trigger sync immediately
+          await syncPendingChanges(spreadsheetId);
+          setPendingCount(0);
+          setLastSyncedState(new Date());
+        } catch (error) {
+          console.error('Failed to batch add to sheets:', error);
+        } finally {
+          setIsSyncing(false);
+        }
+      } else {
+        // Offline or not auth
         for (const t of newTransactions) {
           queueChange({ id: t.id, type: 'add', transaction: t, timestamp: new Date() });
         }
         setPendingCount(prev => prev + newTransactions.length);
+      }
+    }
 
-        // Trigger sync immediately
-        await syncPendingChanges(spreadsheetId);
-        setPendingCount(0);
-        setLastSyncedState(new Date());
-      } catch (error) {
-        console.error('Failed to batch add to sheets:', error);
-        // They are already queued from the loop above if failed midway? 
-        // Actually best to strictly queue them all first then try sync.
-      } finally {
-        setIsSyncing(false);
+    return { added: addedCount, skipped: skippedCount };
+  }, [transactions, isAuthenticated, isGapiReady, spreadsheetId]);
+
+  const resetPortfolio = useCallback(async () => {
+    if (!window.confirm('คุณแน่ใจหรือไม่ที่จะลบข้อมูลทั้งหมด? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // 1. Clear local data
+      const { resetLocalData } = await import('@/services/offlineStorage');
+      resetLocalData();
+
+      // 2. Clear remote data if online
+      if (isAuthenticated && isGapiReady && spreadsheetId && isOnline()) {
+        const { clearTransactionsFromSheet } = await import('@/services/sheetsService');
+        await clearTransactionsFromSheet(spreadsheetId);
       }
-    } else {
-      // Offline or not auth
-      for (const t of newTransactions) {
-        queueChange({ id: t.id, type: 'add', transaction: t, timestamp: new Date() });
-      }
-      setPendingCount(prev => prev + newTransactions.length);
+
+      // 3. Reset state
+      setTransactions([]);
+      setPendingCount(0);
+      setLastSyncedState(null);
+
+      // 4. Force reload or just clear state? State clear is enough.
+    } catch (error) {
+      console.error('Failed to reset portfolio:', error);
+      alert('เกิดข้อผิดพลาดในการลบข้อมูล');
+    } finally {
+      setIsLoading(false);
     }
   }, [isAuthenticated, isGapiReady, spreadsheetId]);
 
@@ -412,5 +586,7 @@ export function usePortfolio() {
     manualSync,
     isOnline: isOnline(),
     importTransactions,
+    resetPortfolio,
+    exchangeRate,
   };
 }

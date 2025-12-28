@@ -23,9 +23,11 @@ const COLUMNS = {
     RELATED_BUY_ID: 9,
     REALIZED_PL: 10,
     REALIZED_PL_PERCENT: 11,
+    WITHHOLDING_TAX: 12,
+    CURRENCY: 13,
 };
 
-const HEADER_ROW = ['ID', 'Ticker', 'Type', 'Shares', 'PricePerShare', 'TotalValue', 'Commission', 'Timestamp', 'Category', 'RelatedBuyId', 'RealizedPL', 'RealizedPLPercent'];
+const HEADER_ROW = ['ID', 'Ticker', 'Type', 'Shares', 'PricePerShare', 'TotalValue', 'Commission', 'Timestamp', 'Category', 'RelatedBuyId', 'RealizedPL', 'RealizedPLPercent', 'WithholdingTax', 'Currency'];
 
 // Find existing spreadsheet or create a new one
 export async function findOrCreateSpreadsheet(): Promise<string> {
@@ -82,7 +84,7 @@ export async function findOrCreateSpreadsheet(): Promise<string> {
         // Add header row
         await window.gapi!.client.sheets.spreadsheets.values.update({
             spreadsheetId,
-            range: `${TRANSACTIONS_SHEET_NAME}!A1:L1`,
+            range: `${TRANSACTIONS_SHEET_NAME}!A1:N1`,
             valueInputOption: 'RAW',
             resource: {
                 values: [HEADER_ROW],
@@ -111,6 +113,8 @@ function rowToTransaction(row: string[]): Transaction {
         relatedBuyId: row[COLUMNS.RELATED_BUY_ID] || undefined,
         realizedPL: row[COLUMNS.REALIZED_PL] ? parseFloat(row[COLUMNS.REALIZED_PL]) : undefined,
         realizedPLPercent: row[COLUMNS.REALIZED_PL_PERCENT] ? parseFloat(row[COLUMNS.REALIZED_PL_PERCENT]) : undefined,
+        withholdingTax: row[COLUMNS.WITHHOLDING_TAX] ? parseFloat(row[COLUMNS.WITHHOLDING_TAX]) : undefined,
+        currency: (row[COLUMNS.CURRENCY] as 'THB' | 'USD') || 'THB',
     };
 }
 
@@ -129,6 +133,8 @@ function transactionToRow(t: Transaction): (string | number)[] {
         t.relatedBuyId || '',
         t.realizedPL ?? '',
         t.realizedPLPercent ?? '',
+        t.withholdingTax ?? '',
+        t.currency || 'THB',
     ];
 }
 
@@ -137,7 +143,7 @@ export async function fetchTransactions(spreadsheetId: string): Promise<Transact
     try {
         const response = await window.gapi!.client.sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: `${TRANSACTIONS_SHEET_NAME}!A2:L`,
+            range: `${TRANSACTIONS_SHEET_NAME}!A2:N`,
         });
 
         const values = response.result.values;
@@ -157,7 +163,7 @@ export async function addTransactionToSheet(spreadsheetId: string, transaction: 
     try {
         await window.gapi!.client.sheets.spreadsheets.values.append({
             spreadsheetId,
-            range: `${TRANSACTIONS_SHEET_NAME}!A:L`,
+            range: `${TRANSACTIONS_SHEET_NAME}!A:N`,
             valueInputOption: 'USER_ENTERED',
             resource: {
                 values: [transactionToRow(transaction)],
@@ -204,7 +210,7 @@ export async function updateTransactionInSheet(spreadsheetId: string, transactio
     try {
         await window.gapi!.client.sheets.spreadsheets.values.update({
             spreadsheetId,
-            range: `${TRANSACTIONS_SHEET_NAME}!A${rowNumber}:L${rowNumber}`,
+            range: `${TRANSACTIONS_SHEET_NAME}!A${rowNumber}:N${rowNumber}`,
             valueInputOption: 'USER_ENTERED',
             resource: {
                 values: [transactionToRow(transaction)],
@@ -303,4 +309,16 @@ export async function fullSync(spreadsheetId: string, localTransactions: Transac
 
     setLastSynced(new Date());
     return remoteTransactions;
+}
+// Clear all transactions from the spreadsheet (keep header)
+export async function clearTransactionsFromSheet(spreadsheetId: string): Promise<void> {
+    try {
+        await (window.gapi!.client.sheets.spreadsheets.values as any).clear({
+            spreadsheetId,
+            range: `${TRANSACTIONS_SHEET_NAME}!A2:N`,
+        });
+    } catch (error) {
+        console.error('Error clearing transactions:', error);
+        throw error;
+    }
 }

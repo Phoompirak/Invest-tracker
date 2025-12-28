@@ -23,10 +23,11 @@ export interface ImportData {
     date: string; // ISO date string YYYY-MM-DD
     commission?: number;
     category?: PortfolioCategory;
+    currency?: 'THB' | 'USD';
 }
 
 interface ImportDialogProps {
-    onImport: (data: ImportData[]) => Promise<void>;
+    onImport: (data: ImportData[]) => Promise<{ added: number; skipped: number }>;
 }
 
 export function ImportDialog({ onImport }: ImportDialogProps) {
@@ -44,7 +45,8 @@ export function ImportDialog({ onImport }: ImportDialogProps) {
     "price": 35.50,
     "date": "2024-01-01",
     "commission": 50,
-    "category": "long-term"
+    "category": "long-term",
+    "currency": "THB"
   }
 ]`;
 
@@ -68,20 +70,29 @@ export function ImportDialog({ onImport }: ImportDialogProps) {
             if (!Array.isArray(data)) throw new Error('Root must be an array');
 
             return data.map((item: any, index: number) => {
-                if (!item.ticker) throw new Error(`Item ${index + 1}: Missing ticker`);
-                if (!item.type) throw new Error(`Item ${index + 1}: Missing type`);
-                if (!item.shares) throw new Error(`Item ${index + 1}: Missing shares`);
-                if (!item.price) throw new Error(`Item ${index + 1}: Missing price`);
-                if (!item.date) throw new Error(`Item ${index + 1}: Missing date`);
+                const ticker = item.ticker;
+                const type = item.type;
+                const shares = item.shares;
+                // Support both 'price' and 'pricePerShare'
+                const price = item.price !== undefined ? item.price : item.pricePerShare;
+                // Support both 'date' and 'timestamp'
+                const date = item.date || item.timestamp;
+
+                if (!ticker) throw new Error(`Item ${index + 1}: Missing ticker`);
+                if (!type) throw new Error(`Item ${index + 1}: Missing type`);
+                if (shares === undefined) throw new Error(`Item ${index + 1}: Missing shares`);
+                if (price === undefined) throw new Error(`Item ${index + 1}: Missing price`);
+                if (!date) throw new Error(`Item ${index + 1}: Missing date`);
 
                 return {
-                    ticker: String(item.ticker).toUpperCase(),
-                    type: String(item.type).toLowerCase() as TransactionType,
-                    shares: Number(item.shares),
-                    price: Number(item.price),
-                    date: String(item.date),
+                    ticker: String(ticker).toUpperCase(),
+                    type: String(type).toLowerCase() as TransactionType,
+                    shares: Number(shares),
+                    price: Number(price),
+                    date: String(date),
                     commission: Number(item.commission || 0),
                     category: (item.category || 'long-term') as PortfolioCategory,
+                    currency: (item.currency || 'THB') as 'THB' | 'USD',
                 };
             });
         } catch (e) {
@@ -99,10 +110,16 @@ export function ImportDialog({ onImport }: ImportDialogProps) {
 
         try {
             const data = validateAndParse(jsonText);
-            await onImport(data);
-            setSuccess(`Successfully imported ${data.length} transactions`);
+            const result = await onImport(data);
+
+            if (result.skipped > 0) {
+                setSuccess(`นำเข้าสำเร็จ ${result.added} รายการ (ข้ามรายการซ้ำ ${result.skipped} รายการ)`);
+            } else {
+                setSuccess(`นำเข้าสำเร็จ ${result.added} รายการ`);
+            }
+
             setJsonText('');
-            setTimeout(() => setOpen(false), 2000);
+            setTimeout(() => setOpen(false), 3000);
         } catch (e) {
             if (e instanceof Error) {
                 setError(e.message);
@@ -130,6 +147,7 @@ export function ImportDialog({ onImport }: ImportDialogProps) {
                     </DialogDescription>
                 </DialogHeader>
 
+                {/* Text JSON Area */}
                 <div className="grid gap-4 py-4">
                     <div className="flex items-center gap-4">
                         <Button variant="outline" className="relative cursor-pointer" asChild>
@@ -172,6 +190,16 @@ export function ImportDialog({ onImport }: ImportDialogProps) {
                         </Alert>
                     )}
                 </div>
+                <span className="text-sm text-muted-foreground">
+                    {jsonText && (() => {
+                        try {
+                            const parsed = JSON.parse(jsonText);
+                            return Array.isArray(parsed) ? `จำนวนรายการ: ${parsed.length} รายการ` : '';
+                        } catch {
+                            return '';
+                        }
+                    })()}
+                </span>
 
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => setOpen(false)}>

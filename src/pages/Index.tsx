@@ -29,6 +29,9 @@ const Index = () => {
     manualSync,
     isOnline,
     importTransactions,
+    resetPortfolio,
+    exchangeRate,
+    updateTransaction,
   } = usePortfolio();
 
   // Show login screen if not authenticated
@@ -109,7 +112,12 @@ const Index = () => {
         {/* Main Content with top padding for status bar */}
         <div className="pt-12">
           {(activeTab === 'dashboard' || activeTab === 'holdings') && (
-            <DimeLayout holdings={holdings} summary={summary} />
+            <DimeLayout
+              holdings={holdings}
+              summary={summary}
+              exchangeRate={exchangeRate}
+              transactions={transactions}
+            />
           )}
 
           {activeTab === 'transaction' && (
@@ -125,7 +133,10 @@ const Index = () => {
                 <TransactionList
                   transactions={transactions}
                   onDelete={deleteTransaction}
+                  onUpdate={updateTransaction}
                   onFilter={filterTransactions}
+                  buyTransactions={transactions.filter(t => t.type === 'buy')}
+                  getBuyTransactionsForSale={getBuyTransactionsForSale}
                 />
               </div>
             </div>
@@ -181,6 +192,21 @@ const Index = () => {
                     {isSyncing ? "กำลังซิงค์..." : "ซิงค์ตอนนี้"}
                   </Button>
                 )}
+              </div>
+
+              {/* Danger Zone */}
+              <div className="bg-card rounded-xl p-4 mb-6 border border-destructive/20">
+                <h3 className="font-semibold mb-3 text-destructive">พื้นที่อันตราย</h3>
+                <Button
+                  variant="outline"
+                  className="w-full border-destructive text-destructive hover:bg-destructive hover:text-white"
+                  onClick={resetPortfolio}
+                >
+                  ล้างข้อมูลทั้งหมด (Reset Portfolio)
+                </Button>
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  ข้อมูลทั้งหมดทั้งในเครื่องและ Google Sheets จะถูกลบถาวร
+                </p>
               </div>
 
               {/* Logout */}

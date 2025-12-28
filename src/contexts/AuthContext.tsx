@@ -23,20 +23,42 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const [isGapiReady, setIsGapiReady] = useState(false);
     const [tokenClient, setTokenClient] = useState<TokenClient | null>(null);
 
-    // Load user from localStorage on mount
+    // Load user from localStorage on mount and validate token
     useEffect(() => {
-        const savedUser = localStorage.getItem('invest_tracker_user');
-        const savedToken = localStorage.getItem('invest_tracker_token');
+        const checkSession = async () => {
+            const savedUser = localStorage.getItem('invest_tracker_user');
+            const savedToken = localStorage.getItem('invest_tracker_token');
 
-        if (savedUser && savedToken) {
-            try {
-                setUser(JSON.parse(savedUser));
-            } catch (e) {
-                console.error('Failed to parse saved user', e);
-                localStorage.removeItem('invest_tracker_user');
-                localStorage.removeItem('invest_tracker_token');
+            if (savedUser && savedToken) {
+                try {
+                    // Quick check if token is still valid by fetching user info
+                    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                        headers: { Authorization: `Bearer ${savedToken}` },
+                    });
+
+                    if (response.ok) {
+                        setUser(JSON.parse(savedUser));
+                    } else {
+                        // Token expired or invalid
+                        console.warn('Session expired, clearing local storage');
+                        localStorage.removeItem('invest_tracker_user');
+                        localStorage.removeItem('invest_tracker_token');
+                        localStorage.removeItem('invest_tracker_spreadsheet_id'); // Optional: clear sheet ID too if we want a fresh start
+                    }
+                } catch (e) {
+                    console.error('Failed to validate session', e);
+                    // On network error, maybe keep the user logged in but in offline mode?
+                    // For now, let's just keep the user if it's a network error (assuming they might be offline)
+                    // But if it's a 401, remove it.
+                    // Since we can't easily distinguish network err from CORS/etc here without more logic, 
+                    // safely defaulting to keeping it if it parses is okay, but 401 response is handled above.
+                    setUser(JSON.parse(savedUser));
+                }
             }
-        }
+            setIsLoading(false);
+        };
+
+        checkSession();
     }, []);
 
     // Initialize GAPI and GIS
