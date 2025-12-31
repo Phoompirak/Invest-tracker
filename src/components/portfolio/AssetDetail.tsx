@@ -19,6 +19,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useBackButton } from "@/hooks/useBackButton";
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 interface AssetDetailProps {
     holding: Holding;
@@ -27,6 +31,7 @@ interface AssetDetailProps {
     currency: 'THB' | 'USD';
     isOpen: boolean;
     onClose: () => void;
+    onSetManualPrice?: (ticker: string, price: number) => void;
 }
 
 export function AssetDetail({
@@ -35,8 +40,12 @@ export function AssetDetail({
     exchangeRate,
     currency,
     isOpen,
-    onClose
+    onClose,
+    onSetManualPrice
 }: AssetDetailProps) {
+    useBackButton(isOpen, (open) => !open && onClose());
+    const [manualPriceInput, setManualPriceInput] = useState<string>("");
+
     // Filter transactions for this specific ticker
     const assetTransactions = transactions
         .filter(t => t.ticker === holding.ticker)
@@ -82,7 +91,7 @@ export function AssetDetail({
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-md p-0 overflow-hidden border-2 border-foreground rounded-2xl">
+            <DialogContent className="max-w-md p-0 overflow-hidden border-2 border-foreground rounded-2xl bg-background">
                 <TooltipProvider>
                     <DialogHeader className="p-6 pb-4 bg-gradient-to-br from-primary/10 to-secondary/20">
                         <div className="flex justify-between items-start">
@@ -104,9 +113,39 @@ export function AssetDetail({
                                         <TooltipContent><p>ราคาตลาด x จำนวนหุ้นที่ถืออยู่</p></TooltipContent>
                                     </Tooltip>
                                 </div>
-                                <p className="text-2xl font-black font-mono">
-                                    {formatCurrency(convertValue(holding.marketValue))}
-                                </p>
+                                {holding.hasPriceData ? (
+                                    <p className="text-2xl font-black font-mono">
+                                        {formatCurrency(convertValue(holding.marketValue))}
+                                    </p>
+                                ) : (
+                                    <div className="mt-1">
+                                        <p className="text-amber-500 text-sm mb-2">ไม่พบราคาตลาด</p>
+                                        {onSetManualPrice && (
+                                            <div className="flex gap-2 items-center">
+                                                <Input
+                                                    type="number"
+                                                    placeholder="ราคาต่อหน่วย"
+                                                    value={manualPriceInput}
+                                                    onChange={(e) => setManualPriceInput(e.target.value)}
+                                                    className="h-7 w-24 text-xs"
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    className="h-7 text-xs"
+                                                    onClick={() => {
+                                                        const price = parseFloat(manualPriceInput);
+                                                        if (!isNaN(price) && price > 0) {
+                                                            onSetManualPrice(holding.ticker, price);
+                                                            setManualPriceInput("");
+                                                        }
+                                                    }}
+                                                >
+                                                    ตั้งราคา
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </DialogHeader>

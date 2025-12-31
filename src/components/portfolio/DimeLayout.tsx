@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,10 +13,15 @@ import {
   Wallet,
   PiggyBank,
   BarChart3,
-  Banknote
+  Banknote,
+
+  Trash2,
+  Info
 } from "lucide-react";
 import { Holding, PortfolioSummary, Transaction } from "@/types/portfolio";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AllocationChart } from "./AllocationChart";
 import { AssetDetail } from "./AssetDetail";
 
@@ -27,6 +32,9 @@ interface DimeLayoutProps {
   transactions?: Transaction[];
   onUpdateTransaction?: (id: string, updates: Partial<Transaction>) => void;
   currency: 'THB' | 'USD';
+  customCategories?: string[];
+  onDeleteCategory?: (name: string) => void;
+  onSetManualPrice?: (ticker: string, price: number) => void;
 }
 
 export function DimeLayout({
@@ -35,7 +43,10 @@ export function DimeLayout({
   exchangeRate = 34.5,
   transactions = [],
   onUpdateTransaction,
-  currency
+  currency,
+  customCategories = [],
+  onDeleteCategory,
+  onSetManualPrice
 }: DimeLayoutProps) {
   const [showValue, setShowValue] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['long-term', 'securities', 'speculation']);
@@ -88,13 +99,28 @@ export function DimeLayout({
   };
 
   // Group holdings by category
-  const holdingsByCategory = holdings.reduce((acc, holding) => {
-    if (!acc[holding.category]) {
-      acc[holding.category] = [];
-    }
-    acc[holding.category].push(holding);
-    return acc;
-  }, {} as Record<string, Holding[]>);
+  const holdingsByCategory = useMemo(() => {
+    const defaultCategoriesList = ['securities', 'long-term', 'speculation'];
+    // All unique categories we know about
+    const allKnownCategories = Array.from(new Set([...defaultCategoriesList, ...customCategories]));
+
+    const grouped: Record<string, Holding[]> = {};
+
+    // Initialize with all known categories (to show empty ones)
+    allKnownCategories.forEach(cat => {
+      grouped[cat] = [];
+    });
+
+    // Add holdings to their respective groups
+    holdings.forEach(holding => {
+      if (!grouped[holding.category]) {
+        grouped[holding.category] = [];
+      }
+      grouped[holding.category].push(holding);
+    });
+
+    return grouped;
+  }, [holdings, customCategories]);
 
   // Calculate category totals
   const getCategoryTotal = (category: string) => {
@@ -249,7 +275,57 @@ export function DimeLayout({
         {/* Asset List */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-foreground">สินทรัพย์ในพอร์ต</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-foreground">สินทรัพย์ในพอร์ต</h2>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary">
+                    <Info className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-0 overflow-hidden bg-card border-2 border-primary/20">
+                  <div className="bg-primary/10 p-3 border-b border-primary/10">
+                    <h4 className="font-bold text-sm flex items-center gap-2">
+                      <Info className="h-4 w-4" />
+                      วิธีอ่านข้อมูล (How to Read)
+                    </h4>
+                  </div>
+                  <div className="p-4 space-y-4">
+                    {/* Sample Row */}
+                    <div className="bg-secondary/30 p-3 rounded-lg border border-dashed border-muted-foreground/50 relative">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                            <Wallet className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold block">AAPL</span>
+                            <span className="text-[10px] text-muted-foreground">10 หุ้น</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs font-bold block">$1,500</span>
+                          <span className="text-[10px] text-green-500 font-mono">+5.00%</span>
+                        </div>
+                      </div>
+
+                      {/* Annotations */}
+                      <div className="absolute top-1 left-12 -translate-y-1/2 bg-primary text-primary-foreground text-[9px] px-1 rounded">1. ชื่อหุ้น (Ticker)</div>
+                      <div className="absolute top-8 left-12 bg-secondary text-secondary-foreground border border-border text-[9px] px-1 rounded">2. จำนวน (Shares)</div>
+                      <div className="absolute top-1 right-2 -translate-y-1/2 bg-primary text-primary-foreground text-[9px] px-1 rounded">3. มูลค่า (Value)</div>
+                      <div className="absolute bottom-1 right-2 translate-y-1/2 bg-green-600 text-white text-[9px] px-1 rounded">4. กำไร/ขาดทุน (P/L)</div>
+                    </div>
+
+                    <div className="space-y-2 text-xs text-muted-foreground">
+                      <p><span className="font-bold text-foreground">1. ชื่อหุ้น:</span> ตัวอักษรย่อของหลักทรัพย์</p>
+                      <p><span className="font-bold text-foreground">2. จำนวน:</span> จำนวนหุ้นหรือหน่วยที่ถือครอง</p>
+                      <p><span className="font-bold text-foreground">3. มูลค่า:</span> มูลค่าปัจจุบัน (ราคาตลาด x จำนวน)</p>
+                      <p><span className="font-bold text-foreground">4. P/L:</span> กำไรหรือขาดทุนที่ยังไม่ขาย (Unrealized) เทียบกับต้นทุน</p>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="text-xs h-8 gap-1">
                 <Plus className="h-3 w-3" />
@@ -278,7 +354,24 @@ export function DimeLayout({
                             <CategoryIcon className="h-5 w-5 text-primary" />
                           </div>
                           <div>
-                            <p className="font-semibold text-foreground">{getCategoryLabel(category)}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-foreground">{getCategoryLabel(category)}</p>
+                              {onDeleteCategory && !['securities', 'long-term', 'speculation'].includes(category) && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-muted-foreground hover:text-destructive transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบหมวดหมู่ "${category}"?`)) {
+                                      onDeleteCategory(category);
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
                             <p className="text-xs text-muted-foreground">{totals.count} หุ้น</p>
                           </div>
                         </div>
@@ -316,38 +409,64 @@ export function DimeLayout({
                               } hover:bg-secondary/40 transition-colors group`}
                           >
                             <div className="flex items-center gap-3 pl-4">
-                              <div className="w-2 h-2 rounded-full bg-primary/60 group-hover:scale-125 transition-transform" />
+                              <div className={`w-2 h-2 rounded-full group-hover:scale-125 transition-transform ${holding.isClosed ? 'bg-amber-500/60' : 'bg-primary/60'}`} />
                               <div>
-                                <p className="font-semibold text-foreground uppercase">{holding.ticker}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold text-foreground uppercase">{holding.ticker}</p>
+                                  <Badge variant="outline" className={`text-[9px] px-1 py-0 h-4 ${holding.isClosed
+                                    ? 'border-amber-500/50 text-amber-600 bg-amber-50 dark:bg-amber-950/30'
+                                    : 'border-green-500/50 text-green-600 bg-green-50 dark:bg-green-950/30'
+                                    }`}>
+                                    {holding.isClosed ? 'ไม่อยู่ในพอร์ต' : 'อยู่ในพอร์ต'}
+                                  </Badge>
+                                </div>
                                 <div className="flex items-center gap-2">
                                   <p className="text-xs text-muted-foreground">
                                     {holding.totalShares.toLocaleString(undefined, { maximumFractionDigits: 6 })} {holding.ticker.includes('GOLD') ? 'ออนซ์' : 'หุ้น'}
                                   </p>
-                                  <span className="text-[10px] text-muted-foreground/50">•</span>
-                                  <p className="text-xs text-muted-foreground">
-                                    พอร์ต {((holding.marketValue / summary.totalValue) * 100).toFixed(1)}%
-                                  </p>
+                                  {!holding.isClosed && summary.totalValue > 0 && (
+                                    <>
+                                      <span className="text-[10px] text-muted-foreground/50">•</span>
+                                      <p className="text-xs text-muted-foreground">
+                                        พอร์ต {((holding.marketValue / summary.totalValue) * 100).toFixed(1)}%
+                                      </p>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
                             <div className="text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <span className="text-[10px] text-muted-foreground">มูลค่า:</span>
+                                <span className="text-[10px] text-muted-foreground">{holding.isClosed ? 'กำไรจากขาย:' : 'มูลค่า:'}</span>
                                 <p className="font-bold font-mono text-foreground">
-                                  {showValue ? formatCurrency(holding.marketValue) : "••••••"}
+                                  {holding.isClosed ? (
+                                    showValue ? formatCurrency(holding.realizedPL) : "••••••"
+                                  ) : holding.hasPriceData ? (
+                                    showValue ? formatCurrency(holding.marketValue) : "••••••"
+                                  ) : (
+                                    <span className="text-amber-500 text-xs">ไม่พบราคา</span>
+                                  )}
                                 </p>
                               </div>
-                              <div className={`flex items-center justify-end gap-1 text-sm ${holding.unrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'
-                                }`}>
-                                <span className="text-[9px] opacity-70">{holding.unrealizedPL >= 0 ? 'กำไร' : 'ขาดทุน'}:</span>
-                                {holding.unrealizedPL >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                                <span className="font-mono">
-                                  {formatPercent(holding.unrealizedPLPercent)}
-                                </span>
-                                <span className="font-mono text-xs">
-                                  ({showValue ? formatCurrency(holding.unrealizedPL) : "••••••"})
-                                </span>
-                              </div>
+                              {holding.isClosed ? (
+                                <div className={`flex items-center justify-end gap-1 text-sm ${holding.realizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                  <span className="text-[9px] opacity-70">{holding.realizedPL >= 0 ? 'กำไร' : 'ขาดทุน'}:</span>
+                                  {holding.realizedPL >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                  <span className="font-mono text-xs">เข้ากระเป๋าแล้ว</span>
+                                </div>
+                              ) : holding.hasPriceData ? (
+                                <div className={`flex items-center justify-end gap-1 text-sm ${(holding.unrealizedPL + holding.realizedPL) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                  <span className="text-[9px] opacity-70">{(holding.unrealizedPL + holding.realizedPL) >= 0 ? 'กำไร' : 'ขาดทุน'}รวม:</span>
+                                  {(holding.unrealizedPL + holding.realizedPL) >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                  <span className="font-mono text-xs">
+                                    ({showValue ? formatCurrency(holding.unrealizedPL + holding.realizedPL) : "••••••"})
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1 text-sm text-amber-500">
+                                  <span className="text-[9px]">กดเพื่อตั้งราคา</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -370,6 +489,7 @@ export function DimeLayout({
           currency={currency}
           isOpen={!!selectedHolding}
           onClose={() => setSelectedHolding(null)}
+          onSetManualPrice={onSetManualPrice}
         />
       )}
     </div>

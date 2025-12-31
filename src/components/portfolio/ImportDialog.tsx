@@ -30,8 +30,12 @@ interface ImportDialogProps {
     onImport: (data: ImportData[]) => Promise<{ added: number; skipped: number }>;
 }
 
+import { useBackButton } from '@/hooks/useBackButton';
+
 export function ImportDialog({ onImport }: ImportDialogProps) {
     const [open, setOpen] = useState(false);
+    useBackButton(open, setOpen);
+
     const [jsonText, setJsonText] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);

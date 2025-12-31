@@ -63,8 +63,9 @@ export function TransactionForm({
 
   // Default categories
   const defaultCategories = ['securities', 'long-term', 'speculation'];
-  // Combine defaults with existing ones, unique
-  const allCategories = Array.from(new Set([...defaultCategories, ...existingCategories]));
+  // Combine defaults with existing ones, unique, filter empty strings
+  const allCategories = Array.from(new Set([...defaultCategories, ...existingCategories]))
+    .filter(c => c && c.trim() !== '');
 
   useEffect(() => {
     // If editing a category that is not in defaults/existing (should be rare if passed correctly), treat as custom?

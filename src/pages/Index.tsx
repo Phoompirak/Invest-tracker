@@ -11,6 +11,7 @@ import { Helmet } from "react-helmet-async";
 import { Button } from "@/components/ui/button";
 import { Cloud, CloudOff, RefreshCw, LogOut } from "lucide-react";
 import { SettingsTab } from "@/components/portfolio/SettingsTab";
+import { CurrencyToggle } from "@/components/ui/currency-toggle";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -34,10 +35,17 @@ const Index = () => {
     resetPortfolio,
     exchangeRate,
     updateTransaction,
+    customCategories,
+    deleteCategory,
+    setManualPrice,
   } = usePortfolio();
 
-  // Get unique categories from all transactions
-  const existingCategories = Array.from(new Set(transactions.map(t => t.category)));
+  // Categories for the form (defaults + custom + any from transactions not in custom yet)
+  const formCategories = Array.from(new Set([
+    'securities', 'long-term', 'speculation',
+    ...customCategories,
+    ...transactions.map(t => t.category)
+  ]));
 
   // Show login screen if not authenticated
   if (!isAuthenticated) {
@@ -86,27 +94,35 @@ const Index = () => {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              {pendingCount > 0 && isOnline && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={manualSync}
-                  disabled={isSyncing}
-                  className="h-7 px-2"
-                >
-                  <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-                </Button>
-              )}
-              <div className="flex items-center gap-1">
-                {user?.picture && (
-                  <img src={user.picture} alt="" className="w-6 h-6 rounded-full" />
+              <CurrencyToggle value={currency} onChange={setCurrency} />
+
+              <div className="flex items-center gap-2">
+                {pendingCount > 0 && isOnline && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={manualSync}
+                    disabled={isSyncing}
+                    className="h-7 px-2"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                  </Button>
                 )}
-                {/* Logout moved to Settings Tab */}
+                {!isOnline && (
+                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled>
+                    <CloudOff className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                )}
               </div>
+            </div>
+            <div className="flex items-center gap-1">
+              {user?.picture && (
+                <img src={user.picture} alt="" className="w-6 h-6 rounded-full" />
+              )}
+              {/* Logout moved to Settings Tab */}
             </div>
           </div>
         </div>
-
         {/* Main Content with top padding for status bar */}
         <div className="pt-12">
           {(activeTab === 'dashboard') && (
@@ -117,6 +133,9 @@ const Index = () => {
               transactions={transactions}
               onUpdateTransaction={updateTransaction}
               currency={currency}
+              customCategories={customCategories}
+              onDeleteCategory={deleteCategory}
+              onSetManualPrice={setManualPrice}
             />
           )}
 
@@ -129,7 +148,7 @@ const Index = () => {
                   onImport={importTransactions}
                   buyTransactions={transactions.filter(t => t.type === 'buy')}
                   getBuyTransactionsForSale={getBuyTransactionsForSale}
-                  existingCategories={existingCategories}
+                  existingCategories={formCategories}
                 />
                 <TransactionList
                   transactions={transactions}
@@ -138,7 +157,7 @@ const Index = () => {
                   onFilter={filterTransactions}
                   buyTransactions={transactions.filter(t => t.type === 'buy')}
                   getBuyTransactionsForSale={getBuyTransactionsForSale}
-                  existingCategories={existingCategories}
+                  existingCategories={formCategories}
                 />
               </div>
             </div>

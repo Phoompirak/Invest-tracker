@@ -4,6 +4,8 @@ const TRANSACTIONS_KEY = 'invest_tracker_transactions';
 const PENDING_CHANGES_KEY = 'invest_tracker_pending_changes';
 const LAST_SYNCED_KEY = 'invest_tracker_last_synced';
 const SPREADSHEET_ID_KEY = 'invest_tracker_spreadsheet_id';
+const CUSTOM_CATEGORIES_KEY = 'invest_tracker_custom_categories';
+const HIDDEN_CATEGORIES_KEY = 'invest_tracker_hidden_categories';
 
 export type ChangeType = 'add' | 'update' | 'delete';
 
@@ -145,5 +147,63 @@ export function resetLocalData(): void {
     localStorage.removeItem(TRANSACTIONS_KEY);
     localStorage.removeItem(PENDING_CHANGES_KEY);
     localStorage.removeItem(LAST_SYNCED_KEY);
+    localStorage.removeItem(CUSTOM_CATEGORIES_KEY);
+    localStorage.removeItem(HIDDEN_CATEGORIES_KEY);
     // We intentionally keep SPREADSHEET_ID_KEY so we can reuse/clear the same sheet
 }
+
+// Custom Categories
+export function saveCustomCategories(categories: string[]): void {
+    localStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(categories));
+}
+
+export function loadCustomCategories(): string[] {
+    try {
+        const data = localStorage.getItem(CUSTOM_CATEGORIES_KEY);
+        return data ? JSON.parse(data) : [];
+    } catch {
+        return [];
+    }
+}
+
+// Hidden Categories
+export function saveHiddenCategories(categories: string[]): void {
+    localStorage.setItem(HIDDEN_CATEGORIES_KEY, JSON.stringify(categories));
+}
+
+export function loadHiddenCategories(): string[] {
+    try {
+        const data = localStorage.getItem(HIDDEN_CATEGORIES_KEY);
+        return data ? JSON.parse(data) : [];
+    } catch {
+        return [];
+    }
+}
+
+// Manual Prices for assets without API data
+const MANUAL_PRICES_KEY = 'invest_tracker_manual_prices';
+
+export function saveManualPrices(prices: Record<string, number>): void {
+    localStorage.setItem(MANUAL_PRICES_KEY, JSON.stringify(prices));
+}
+
+export function loadManualPrices(): Record<string, number> {
+    try {
+        const data = localStorage.getItem(MANUAL_PRICES_KEY);
+        return data ? JSON.parse(data) : {};
+    } catch {
+        return {};
+    }
+}
+
+export function setManualPrice(ticker: string, price: number): void {
+    const prices = loadManualPrices();
+    prices[ticker] = price;
+    saveManualPrices(prices);
+}
+
+export function getManualPrice(ticker: string): number | null {
+    const prices = loadManualPrices();
+    return prices[ticker] ?? null;
+}
+

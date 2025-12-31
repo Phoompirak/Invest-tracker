@@ -26,10 +26,13 @@ import {
   DialogContent,
   DialogTrigger,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
+  DialogDescription
 } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { StockPriceChart } from "./StockPriceChart";
 import { TransactionForm } from "./TransactionForm";
+import { useBackButton } from "@/hooks/useBackButton";
 
 interface TransactionListProps {
   transactions: Transaction[];
@@ -111,12 +114,21 @@ export function TransactionList({
     })
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
+  // ... inside component ...
+
+  useBackButton(!!selectedStock, (open) => !open && setSelectedStock(null));
+  useBackButton(!!editingTransaction, (open) => !open && setEditingTransaction(null));
+
   return (
     <Card className="border-2 border-foreground shadow-sm">
       {/* Stock Chart Dialog */}
       {selectedStock && (
         <Dialog open={!!selectedStock} onOpenChange={(open) => !open && setSelectedStock(null)}>
-          <DialogContent className="sm:max-w-[600px] p-0 border-0 bg-transparent shadow-none">
+          <DialogContent className="sm:max-w-[600px] p-0 border-0 bg-transparent shadow-none [&>button]:text-foreground/50 [&>button]:hover:text-foreground [&>button]:bg-background/20 [&>button]:backdrop-blur-sm [&>button]:rounded-full [&>button]:p-1 [&>button]:h-8 [&>button]:w-8 [&>button]:top-2 [&>button]:right-2">
+            <VisuallyHidden>
+              <DialogTitle>กราฟราคาหุ้น {selectedStock.ticker}</DialogTitle>
+              <DialogDescription>แสดงกราฟราคาย้อนหลังของหุ้น {selectedStock.ticker}</DialogDescription>
+            </VisuallyHidden>
             <StockPriceChart ticker={selectedStock.ticker} currency={selectedStock.currency} />
           </DialogContent>
         </Dialog>
@@ -125,8 +137,12 @@ export function TransactionList({
       {/* Edit Transaction Dialog */}
       {editingTransaction && (
         <Dialog open={!!editingTransaction} onOpenChange={(open) => !open && setEditingTransaction(null)}>
-          <DialogContent className="sm:max-w-[800px] bg-background border-2 border-foreground p-0 overflow-hidden">
-            <div className="max-h-[85vh] overflow-y-auto p-6">
+          <DialogContent className="sm:max-w-[800px] bg-background border-2 border-foreground p-0 overflow-hidden [&>button]:text-foreground [&>button]:hover:text-foreground/80 [&>button]:z-50">
+            <VisuallyHidden>
+              <DialogTitle>แก้ไขรายการ {editingTransaction.ticker}</DialogTitle>
+              <DialogDescription>แก้ไขรายละเอียดธุรกรรมของ {editingTransaction.ticker}</DialogDescription>
+            </VisuallyHidden>
+            <div className="max-h-[85vh] overflow-y-auto p-6 pt-10">
               <TransactionForm
                 onSubmit={() => { }} // Not used in edit mode
                 onUpdate={(id, updates) => {
@@ -188,11 +204,13 @@ export function TransactionList({
               <SelectContent>
                 <SelectItem value="all">ทั้งหมด</SelectItem>
                 {/* Default ones first if needed, or just sort all */}
-                {Array.from(new Set(['securities', 'long-term', 'speculation', ...existingCategories])).map(c => (
-                  <SelectItem key={c} value={c}>
-                    {getCategoryLabel(c)}
-                  </SelectItem>
-                ))}
+                {Array.from(new Set(['securities', 'long-term', 'speculation', ...existingCategories]))
+                  .filter(c => c && c.trim() !== '') // Filter out empty strings
+                  .map(c => (
+                    <SelectItem key={c} value={c}>
+                      {getCategoryLabel(c)}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>

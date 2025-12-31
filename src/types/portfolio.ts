@@ -32,7 +32,10 @@ export interface Holding {
   marketValue: number;
   unrealizedPL: number;
   unrealizedPLPercent: number;
+  realizedPL: number; // Total realized P/L from all sell transactions
   category: PortfolioCategory;
+  isClosed: boolean; // True if all shares have been sold
+  hasPriceData: boolean; // True if we have valid price data (API or manual)
 }
 
 export interface PortfolioSummary {

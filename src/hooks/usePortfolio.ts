@@ -9,6 +9,12 @@ import {
   getLastSynced,
   isOnline,
   hasPendingChanges,
+  loadCustomCategories,
+  saveCustomCategories,
+  loadHiddenCategories,
+  saveHiddenCategories,
+  loadManualPrices,
+  setManualPrice as saveManualPrice,
 } from '@/services/offlineStorage';
 import {
   findOrCreateSpreadsheet,
@@ -21,6 +27,9 @@ import {
 
 import { fetchCurrentPrices, fetchExchangeRate } from '@/services/stockPriceService';
 
+// Helper to safely cast to number
+const cNumber = (val: any) => Number(val) || 0;
+
 export function usePortfolio() {
   const { isAuthenticated, isGapiReady } = useAuth();
   const [currentPrices, setCurrentPrices] = useState<Record<string, number>>({});
@@ -32,6 +41,9 @@ export function usePortfolio() {
   const [lastSynced, setLastSyncedState] = useState<Date | null>(getLastSynced());
   const [spreadsheetId, setSpreadsheetId] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(getPendingChanges().length);
+  const [customCategories, setCustomCategories] = useState<string[]>(loadCustomCategories());
+  const [hiddenCategories, setHiddenCategories] = useState<string[]>(loadHiddenCategories());
+  const [manualPrices, setManualPrices] = useState<Record<string, number>>(loadManualPrices());
 
   // Load transactions on mount or when auth changes
   useEffect(() => {
@@ -74,6 +86,25 @@ export function usePortfolio() {
 
     loadData();
   }, [isAuthenticated, isGapiReady]);
+
+  // Discover and manage categories from transactions
+  useEffect(() => {
+    if (transactions.length === 0) return;
+
+    const discoveredCategories = Array.from(new Set(transactions.map(t => t.category)))
+      .filter(cat =>
+        cat &&
+        !['securities', 'long-term', 'speculation'].includes(cat) &&
+        !customCategories.includes(cat) &&
+        !hiddenCategories.includes(cat)
+      );
+
+    if (discoveredCategories.length > 0) {
+      const updatedCustom = [...customCategories, ...discoveredCategories];
+      setCustomCategories(updatedCustom);
+      saveCustomCategories(updatedCustom);
+    }
+  }, [transactions, customCategories, hiddenCategories]);
 
   // Listen for online/offline events
   useEffect(() => {
@@ -146,6 +177,22 @@ export function usePortfolio() {
     manualRealizedPL?: number,
     exchangeRate?: number
   ) => {
+    // Add to custom categories if new
+    if (category && !['securities', 'long-term', 'speculation'].includes(category)) {
+      // If was hidden, unhide it
+      if (hiddenCategories.includes(category)) {
+        const updatedHidden = hiddenCategories.filter(c => c !== category);
+        setHiddenCategories(updatedHidden);
+        saveHiddenCategories(updatedHidden);
+      }
+
+      if (!customCategories.includes(category)) {
+        const updatedCategories = [...customCategories, category];
+        setCustomCategories(updatedCategories);
+        saveCustomCategories(updatedCategories);
+      }
+    }
+
     // For dividends: totalValue is the dividend amount (pricePerShare)
     const totalValue = type === 'dividend' ? pricePerShare : shares * pricePerShare;
 
@@ -304,53 +351,63 @@ export function usePortfolio() {
       // Convert to THB if needed
       // Use historical exchange rate if available (for precise cost basis), otherwise fallback to current
       const rate = t.currency === 'USD' ? (t.exchangeRate || exchangeRate) : 1;
-      const transactionCost = (t.totalValue + t.commission) * rate;
+      const transactionCost = cNumber(t.totalValue + t.commission) * rate;
 
       if (t.type === 'buy') {
-        current.shares += t.shares;
+        current.shares += cNumber(t.shares);
         current.totalCost += transactionCost;
       } else {
         // Reduce cost basis proportionally
         if (current.shares > 0) {
           const costPerShare = current.totalCost / current.shares;
-          current.totalCost -= (costPerShare * t.shares);
+          current.totalCost -= (costPerShare * cNumber(t.shares));
         }
-        current.shares -= t.shares;
+        current.shares -= cNumber(t.shares);
       }
+
+      current.category = t.category;
 
       holdingsMap.set(t.ticker, current);
     });
 
     return Array.from(holdingsMap.entries())
-      .filter(([_, data]) => data.shares > 0)
       .map(([ticker, data]) => {
-        // Check if ticker is likely USD (no .BK and not in currentPrices as THB?) 
-        // Actually we assume currentPrices are in local currency of the stock from Yahoo
-        // If we entered it as USD, we treat price as USD.
-        // But here we rely on how we fetched prices. 
-        // Yahoo returns prices in the exchange's currency.
-        // If we fetched 'AAPL', it returns USD. If 'PTT.BK', THB.
-        // Simple heuristic: if we have a holding that was bought in USD, assume current price is USD.
-        // But what if we have mixed? Usually not for same ticker.
+        // Check if ticker is likely USD
         const isUsd = transactions.some(t => t.ticker === ticker && t.currency === 'USD');
         const rate = isUsd ? exchangeRate : 1;
 
-        const currentPrice = currentPrices[ticker] || 0;
-        // Market Value in THB
-        const marketValue = data.shares * currentPrice * rate;
-        const unrealizedPL = marketValue - data.totalCost;
-        const unrealizedPLPercent = data.totalCost > 0 ? (unrealizedPL / data.totalCost) * 100 : 0;
+        const isClosed = data.shares <= 0.0001; // Essentially 0 due to float math
+        // Use manual price as fallback if API price is 0
+        const apiPrice = currentPrices[ticker] || 0;
+        const manualPrice = manualPrices[ticker] || 0;
+        const currentPrice = apiPrice > 0 ? apiPrice : manualPrice;
+        const hasPriceData = currentPrice > 0;
+        // Market Value in THB (0 for closed positions)
+        const marketValue = isClosed ? 0 : data.shares * currentPrice * rate;
+        const unrealizedPL = isClosed ? 0 : (hasPriceData ? marketValue - data.totalCost : 0);
+        const unrealizedPLPercent = (data.totalCost > 0 && !isClosed && hasPriceData) ? (unrealizedPL / data.totalCost) * 100 : 0;
+
+        // Calculate realized P/L from all sell transactions for this ticker
+        const tickerRealizedPL = transactions
+          .filter(t => t.ticker === ticker && t.type === 'sell' && t.realizedPL !== undefined)
+          .reduce((sum, t) => {
+            const txRate = t.currency === 'USD' ? exchangeRate : 1;
+            return sum + (t.realizedPL || 0) * txRate;
+          }, 0);
 
         return {
           ticker,
-          totalShares: data.shares,
-          averageCost: data.totalCost / data.shares,
-          totalInvested: data.totalCost,
+          totalShares: isClosed ? 0 : data.shares,
+          averageCost: (data.shares > 0 && data.totalCost > 0) ? data.totalCost / data.shares : 0,
+          totalInvested: isClosed ? 0 : data.totalCost,
           currentPrice,
           marketValue,
           unrealizedPL,
           unrealizedPLPercent,
+          realizedPL: tickerRealizedPL,
           category: data.category,
+          isClosed,
+          hasPriceData,
         };
       });
   }, [transactions]);
@@ -571,6 +628,18 @@ export function usePortfolio() {
     }
   }, [isAuthenticated, isGapiReady, spreadsheetId]);
 
+  const deleteCategory = useCallback((categoryName: string) => {
+    // Add to hidden list
+    const updatedHidden = Array.from(new Set([...hiddenCategories, categoryName]));
+    setHiddenCategories(updatedHidden);
+    saveHiddenCategories(updatedHidden);
+
+    // Remove from custom list
+    const updatedCustom = customCategories.filter(c => c !== categoryName);
+    setCustomCategories(updatedCustom);
+    saveCustomCategories(updatedCustom);
+  }, [customCategories, hiddenCategories]);
+
   return {
     transactions,
     holdings,
@@ -591,5 +660,12 @@ export function usePortfolio() {
     importTransactions,
     resetPortfolio,
     exchangeRate,
+    customCategories,
+    deleteCategory,
+    setManualPrice: (ticker: string, price: number) => {
+      saveManualPrice(ticker, price);
+      setManualPrices(prev => ({ ...prev, [ticker]: price }));
+    },
+    manualPrices,
   };
 }
