@@ -376,12 +376,17 @@ export function usePortfolio() {
         const isUsd = transactions.some(t => t.ticker === ticker && t.currency === 'USD');
         const rate = isUsd ? exchangeRate : 1;
 
-        const isClosed = data.shares <= 0.0001; // Essentially 0 due to float math
         // Use manual price as fallback if API price is 0
         const apiPrice = currentPrices[ticker] || 0;
         const manualPrice = manualPrices[ticker] || 0;
         const currentPrice = apiPrice > 0 ? apiPrice : manualPrice;
         const hasPriceData = currentPrice > 0;
+
+        // Check for "dust" (value < 1.0 in original currency)
+        const rawValue = data.shares * currentPrice;
+        const isDust = hasPriceData && rawValue < 1 && rawValue > 0;
+
+        const isClosed = data.shares <= 0.0001 || isDust;
         // Market Value in THB (0 for closed positions)
         const marketValue = isClosed ? 0 : data.shares * currentPrice * rate;
         const unrealizedPL = isClosed ? 0 : (hasPriceData ? marketValue - data.totalCost : 0);
