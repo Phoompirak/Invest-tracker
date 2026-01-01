@@ -44,6 +44,17 @@ export function usePortfolio() {
   const [customCategories, setCustomCategories] = useState<string[]>(loadCustomCategories());
   const [hiddenCategories, setHiddenCategories] = useState<string[]>(loadHiddenCategories());
   const [manualPrices, setManualPrices] = useState<Record<string, number>>(loadManualPrices());
+  const [currency, setCurrencyState] = useState<'THB' | 'USD'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('portfolio_currency') as 'THB' | 'USD') || 'THB';
+    }
+    return 'THB';
+  });
+
+  const setCurrency = useCallback((newCurrency: 'THB' | 'USD') => {
+    localStorage.setItem('portfolio_currency', newCurrency);
+    setCurrencyState(newCurrency);
+  }, []);
 
   // Load transactions on mount or when auth changes
   useEffect(() => {
@@ -318,6 +329,93 @@ export function usePortfolio() {
     }
   }, [isAuthenticated, isGapiReady, spreadsheetId]);
 
+
+
+  // Fix: Recalculate FIFO history for all transactions to ensure correct Realized P/L
+  const recalculateHistory = useCallback(async () => {
+    setTransactions(prev => {
+      // 1. Sort all transactions by date
+      const sorted = [...prev].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      // 2. Track inventory PER TICKER (Map of ticker -> array of lots)
+      const inventoryByTicker = new Map<string, { id: string; shares: number; costPerShare: number; remaining: number }[]>();
+
+      const updatedTransactions = sorted.map(t => {
+        if (t.type === 'buy') {
+          // Cost per share = (totalValue + commission) / shares
+          // This ensures commission is included in the cost basis
+          const costPerShare = (t.totalValue + t.commission) / t.shares;
+
+          // Get or create inventory array for this ticker
+          const tickerInventory = inventoryByTicker.get(t.ticker) || [];
+          tickerInventory.push({
+            id: t.id,
+            shares: t.shares,
+            costPerShare: costPerShare,
+            remaining: t.shares
+          });
+          inventoryByTicker.set(t.ticker, tickerInventory);
+
+          return t;
+        } else if (t.type === 'sell') {
+          let sharesToSell = t.shares;
+          let totalCost = 0;
+
+          // Get inventory for THIS ticker only
+          const tickerInventory = inventoryByTicker.get(t.ticker) || [];
+
+          // Match with available inventory (FIFO) for this ticker
+          for (const lot of tickerInventory) {
+            if (sharesToSell <= 0.000001) break; // Float tolerance
+            if (lot.remaining <= 0.000001) continue;
+
+            const taking = Math.min(lot.remaining, sharesToSell);
+            // Use costPerShare which INCLUDES buy commission
+            totalCost += taking * lot.costPerShare;
+
+            lot.remaining -= taking;
+            sharesToSell -= taking;
+          }
+
+          // Update P/L: saleValue - totalCost (with buy commission) - sell commission
+          const saleValue = t.shares * t.pricePerShare;
+          const realizedPL = saleValue - totalCost - t.commission;
+          let realizedPLPercent = 0;
+
+          const impliedCost = saleValue - realizedPL - t.commission;
+          if (impliedCost > 0) {
+            realizedPLPercent = (realizedPL / impliedCost) * 100;
+          }
+
+          return {
+            ...t,
+            realizedPL,
+            realizedPLPercent
+          };
+        }
+        return t;
+      });
+
+      saveTransactions(updatedTransactions);
+
+      // Sync to sheets if online
+      if (isAuthenticated && isGapiReady && spreadsheetId && isOnline()) {
+        // This acts as a "mass update". In reality, we might want to just overwrite the whole sheet 
+        // or update changed rows. For now, let's just update local and queue changes? 
+        // Updating 100s of rows individually is slow.
+        // A better approach for "fix" is to maybe just let them sync slowly or rely on local assumption.
+        // For this immediate fix, we'll try to batch update if possible, or just queue updates for SELLS.
+        const changedSells = updatedTransactions.filter(t => t.type === 'sell');
+        changedSells.forEach(t => {
+          queueChange({ id: t.id, type: 'update', transaction: t, timestamp: new Date() });
+        });
+        setPendingCount(prev => prev + changedSells.length);
+      }
+
+      return updatedTransactions;
+    });
+  }, [isAuthenticated, isGapiReady, spreadsheetId]);
+
   const manualSync = useCallback(async () => {
     if (!isAuthenticated || !isGapiReady || !isOnline()) return;
 
@@ -386,7 +484,7 @@ export function usePortfolio() {
         const rawValue = data.shares * currentPrice;
         const isDust = hasPriceData && rawValue < 1 && rawValue > 0;
 
-        const isClosed = data.shares <= 0.0001 || isDust;
+        const isClosed = data.shares <= 0.01 || isDust;
         // Market Value in THB (0 for closed positions)
         const marketValue = isClosed ? 0 : data.shares * currentPrice * rate;
         const unrealizedPL = isClosed ? 0 : (hasPriceData ? marketValue - data.totalCost : 0);
@@ -671,6 +769,10 @@ export function usePortfolio() {
       saveManualPrice(ticker, price);
       setManualPrices(prev => ({ ...prev, [ticker]: price }));
     },
+    recalculateHistory,
+    currency,
+    setCurrency,
     manualPrices,
   };
 }
+

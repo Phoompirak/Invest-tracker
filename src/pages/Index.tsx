@@ -12,10 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Cloud, CloudOff, RefreshCw, LogOut } from "lucide-react";
 import { SettingsTab } from "@/components/portfolio/SettingsTab";
 import { CurrencyToggle } from "@/components/ui/currency-toggle";
+import { Navbar } from "@/components/portfolio/Navbar";
+import { useLocation } from "react-router-dom";
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [currency, setCurrency] = useState<'THB' | 'USD'>('THB');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(location.state?.initialTab || 'dashboard');
   const { isAuthenticated, isLoading: authLoading, user, signOut } = useAuth();
   const {
     transactions,
@@ -38,6 +40,9 @@ const Index = () => {
     customCategories,
     deleteCategory,
     setManualPrice,
+    recalculateHistory,
+    currency,
+    setCurrency,
   } = usePortfolio();
 
   // Categories for the form (defaults + custom + any from transactions not in custom yet)
@@ -73,56 +78,8 @@ const Index = () => {
 
       <div className="min-h-screen bg-background">
         {/* Sync Status Bar */}
-        <div className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm border-b">
-          <div className="flex items-center justify-between px-4 py-2">
-            <div className="flex items-center gap-2">
-              {isOnline ? (
-                <Cloud className="w-4 h-4 text-emerald-500" />
-              ) : (
-                <CloudOff className="w-4 h-4 text-amber-500" />
-              )}
-              <span className="text-xs text-muted-foreground">
-                {isSyncing ? (
-                  "กำลังซิงค์..."
-                ) : pendingCount > 0 ? (
-                  `${pendingCount} รายการรอซิงค์`
-                ) : lastSynced ? (
-                  `ซิงค์ล่าสุด: ${lastSynced.toLocaleTimeString('th-TH')}`
-                ) : (
-                  "พร้อมใช้งาน"
-                )}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CurrencyToggle value={currency} onChange={setCurrency} />
-
-              <div className="flex items-center gap-2">
-                {pendingCount > 0 && isOnline && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={manualSync}
-                    disabled={isSyncing}
-                    className="h-7 px-2"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-                  </Button>
-                )}
-                {!isOnline && (
-                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled>
-                    <CloudOff className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              {user?.picture && (
-                <img src={user.picture} alt="" className="w-6 h-6 rounded-full" />
-              )}
-              {/* Logout moved to Settings Tab */}
-            </div>
-          </div>
-        </div>
+        {/* Sync Status Bar */}
+        <Navbar currency={currency} setCurrency={setCurrency} />
         {/* Main Content with top padding for status bar */}
         <div className="pt-12">
           {(activeTab === 'dashboard') && (
@@ -187,6 +144,7 @@ const Index = () => {
               holdings={holdings}
               summary={summary}
               exchangeRate={exchangeRate}
+              recalculateHistory={recalculateHistory}
             />
           )}
         </div>

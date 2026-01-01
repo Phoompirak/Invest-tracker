@@ -28,6 +28,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const checkSession = async () => {
             const savedUser = localStorage.getItem('invest_tracker_user');
             const savedToken = localStorage.getItem('invest_tracker_token');
+            const loginTime = localStorage.getItem('invest_tracker_login_time');
+
+            // Check if 30 days have passed since login
+            const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+            if (loginTime) {
+                const elapsed = Date.now() - parseInt(loginTime, 10);
+                if (elapsed > THIRTY_DAYS_MS) {
+                    console.log('Session expired (30 days). Please log in again.');
+                    localStorage.removeItem('invest_tracker_user');
+                    localStorage.removeItem('invest_tracker_token');
+                    localStorage.removeItem('invest_tracker_login_time');
+                    setIsLoading(false);
+                    return;
+                }
+            }
 
             if (savedUser && savedToken) {
                 try {
@@ -43,15 +58,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
                         console.warn('Session expired, clearing local storage');
                         localStorage.removeItem('invest_tracker_user');
                         localStorage.removeItem('invest_tracker_token');
-                        localStorage.removeItem('invest_tracker_spreadsheet_id'); // Optional: clear sheet ID too if we want a fresh start
+                        localStorage.removeItem('invest_tracker_login_time');
+                        localStorage.removeItem('invest_tracker_spreadsheet_id');
                     }
                 } catch (e) {
                     console.error('Failed to validate session', e);
-                    // On network error, maybe keep the user logged in but in offline mode?
-                    // For now, let's just keep the user if it's a network error (assuming they might be offline)
-                    // But if it's a 401, remove it.
-                    // Since we can't easily distinguish network err from CORS/etc here without more logic, 
-                    // safely defaulting to keeping it if it parses is okay, but 401 response is handled above.
+                    // On network error, keep user logged in (offline mode)
                     setUser(JSON.parse(savedUser));
                 }
             }
@@ -164,6 +176,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 setUser(googleUser);
                 localStorage.setItem('invest_tracker_user', JSON.stringify(googleUser));
                 localStorage.setItem('invest_tracker_token', accessToken);
+                localStorage.setItem('invest_tracker_login_time', Date.now().toString()); // Store login timestamp for 30-day expiry
 
                 // Set token in GAPI client
                 if (window.gapi?.client) {
@@ -219,6 +232,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // Clear local storage
         localStorage.removeItem('invest_tracker_user');
         localStorage.removeItem('invest_tracker_token');
+        localStorage.removeItem('invest_tracker_login_time');
         localStorage.removeItem('invest_tracker_spreadsheet_id');
         localStorage.removeItem('invest_tracker_transactions');
         localStorage.removeItem('invest_tracker_pending_changes');

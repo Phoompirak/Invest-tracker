@@ -26,6 +26,7 @@ interface SettingsTabProps {
     holdings: Holding[];
     summary: PortfolioSummary;
     exchangeRate: number;
+    recalculateHistory: () => Promise<void>;
 }
 
 export function SettingsTab({
@@ -43,8 +44,10 @@ export function SettingsTab({
     onUpdateTransaction,
     holdings,
     summary,
-    exchangeRate
+    exchangeRate,
+    recalculateHistory,
 }: SettingsTabProps) {
+
     const [openTools, setOpenTools] = useState(true);
 
     return (
@@ -147,6 +150,29 @@ export function SettingsTab({
                                         <StockSplitTool transactions={transactions} onUpdateTransaction={onUpdateTransaction} />
                                     </div>
                                 )}
+
+                                <div className="pb-4 border-b border-border/50">
+                                    <h3 className="text-sm font-semibold mb-3 text-muted-foreground">เครื่องมือซ่อมแซม (Fix Tools)</h3>
+                                    <div className="space-y-2">
+                                        <p className="text-xs text-muted-foreground">
+                                            หากข้อมูลกำไรขาดทุน (P/L) ของคุณดูเหมือนจะผิดปกติ คุณสามารถกดปุ่มนี้เพื่อคำนวณประวัติการซื้อขายใหม่ทั้งหมดตามลำดับเวลา (FIFO)
+                                        </p>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={async () => {
+                                                if (window.confirm('คุณต้องการคำนวณประวัติ P/L ใหม่ทั้งหมดหรือไม่? อาจใช้เวลาสักครู่')) {
+                                                    await recalculateHistory();
+                                                    alert('คำนวณเสร็จสิ้น! กรุณารีเฟรชหน้าจอ');
+                                                }
+                                            }}
+                                            className="w-full justify-start text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                        >
+                                            <RefreshCw className="mr-2 h-4 w-4" />
+                                            คำนวณกำไร/ขาดทุนใหม่ (Recalculate P/L)
+                                        </Button>
+                                    </div>
+                                </div>
 
                                 <div className="pb-4 border-b border-border/50">
                                     <h3 className="text-sm font-semibold mb-3 text-muted-foreground">ส่งออกข้อมูล (Export Data)</h3>
