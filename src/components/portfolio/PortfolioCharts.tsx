@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LineChart, Line, CartesianGrid } from "recharts";
 import { Holding, Transaction } from "@/types/portfolio";
@@ -8,22 +9,31 @@ interface PortfolioChartsProps {
 }
 
 export function PortfolioCharts({ holdings, transactions }: PortfolioChartsProps) {
-  // Prepare allocation data for pie chart
-  const allocationData = holdings.map((h, index) => ({
-    name: h.ticker,
-    value: h.marketValue,
-    color: `hsl(${(index * 137.5) % 360}, 70%, 50%)`,
-  }));
+  // Memoized allocation data for pie chart
+  const allocationData = useMemo(() =>
+    holdings.map((h, index) => ({
+      name: h.ticker,
+      value: h.marketValue,
+      color: `hsl(${(index * 137.5) % 360}, 70%, 50%)`,
+    })),
+    [holdings]
+  );
 
-  // Prepare P/L data for bar chart
-  const plData = holdings.map(h => ({
-    ticker: h.ticker,
-    unrealizedPL: h.unrealizedPL,
-    unrealizedPLPercent: h.unrealizedPLPercent,
-  }));
+  // Memoized P/L data for bar chart
+  const plData = useMemo(() =>
+    holdings.map(h => ({
+      ticker: h.ticker,
+      unrealizedPL: h.unrealizedPL,
+      unrealizedPLPercent: h.unrealizedPLPercent,
+    })),
+    [holdings]
+  );
 
-  // Prepare portfolio value over time
-  const portfolioHistory = generatePortfolioHistory(transactions, holdings);
+  // Memoized portfolio value over time
+  const portfolioHistory = useMemo(() =>
+    generatePortfolioHistory(transactions, holdings),
+    [transactions, holdings]
+  );
 
   const formatCurrency = (value: number) => {
     return `฿${value.toLocaleString('th-TH', { minimumFractionDigits: 0 })}`;
@@ -99,16 +109,16 @@ export function PortfolioCharts({ holdings, transactions }: PortfolioChartsProps
                 <XAxis type="number" tickFormatter={formatCurrency} />
                 <YAxis type="category" dataKey="ticker" width={60} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar 
-                  dataKey="unrealizedPL" 
+                <Bar
+                  dataKey="unrealizedPL"
                   fill="hsl(var(--chart-2))"
                   stroke="hsl(var(--foreground))"
                   strokeWidth={2}
                 >
                   {plData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={entry.unrealizedPL >= 0 ? 'hsl(var(--chart-2))' : 'hsl(var(--destructive))'} 
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.unrealizedPL >= 0 ? 'hsl(var(--chart-2))' : 'hsl(var(--destructive))'}
                     />
                   ))}
                 </Bar>
@@ -137,10 +147,10 @@ export function PortfolioCharts({ holdings, transactions }: PortfolioChartsProps
                 <XAxis dataKey="date" />
                 <YAxis tickFormatter={formatCurrency} />
                 <Tooltip content={<CustomTooltip />} />
-                <Line 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="hsl(var(--primary))" 
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="hsl(var(--primary))"
                   strokeWidth={3}
                   dot={{ fill: 'hsl(var(--background))', stroke: 'hsl(var(--primary))', strokeWidth: 2, r: 4 }}
                 />
@@ -162,20 +172,20 @@ function generatePortfolioHistory(transactions: Transaction[], holdings: Holding
   const today = new Date();
   const history = [];
   let baseValue = holdings.reduce((sum, h) => sum + h.totalInvested, 0);
-  
+
   for (let i = 6; i >= 0; i--) {
     const date = new Date(today);
     date.setMonth(date.getMonth() - i);
     const variation = 1 + (Math.random() - 0.5) * 0.1;
-    const value = i === 0 
+    const value = i === 0
       ? holdings.reduce((sum, h) => sum + h.marketValue, 0)
       : baseValue * variation * (1 + (6 - i) * 0.02);
-    
+
     history.push({
       date: date.toLocaleDateString('th-TH', { month: 'short', year: '2-digit' }),
       value: Math.round(value),
     });
   }
-  
+
   return history;
 }

@@ -60,3 +60,12 @@ export interface FilterOptions {
   category?: PortfolioCategory;
   ticker?: string;
 }
+
+// Stock split event (stored in Config sheet)
+export interface StockSplit {
+  id: string;
+  ticker: string;
+  ratio: number; // e.g., 4 means 4-for-1 split (shares multiply by 4, price divides by 4)
+  effectiveDate: Date;
+  createdAt: Date;
+}

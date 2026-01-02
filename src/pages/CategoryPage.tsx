@@ -20,7 +20,8 @@ export default function CategoryPage() {
         summary,
         updateTransaction,
         currency,
-        setCurrency
+        setCurrency,
+        stockSplits
     } = usePortfolio();
 
     // Local state for holding overlay
@@ -89,6 +90,7 @@ export default function CategoryPage() {
                     CategoryIcon={getCategoryIcon(categoryId)}
                     exchangeRate={exchangeRate}
                     currency={currency}
+                    stockSplits={stockSplits}
                 />
 
                 {/* Holding Detail Overlay */}

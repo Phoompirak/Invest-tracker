@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   Table,
   TableBody,
@@ -19,8 +19,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Transaction, FilterOptions, PortfolioCategory, TransactionType } from "@/types/portfolio";
-import { Trash2, Search, Filter, ArrowUpRight, ArrowDownRight, DollarSign, LineChart, Edit } from "lucide-react";
+import { Trash2, Search, Filter, ArrowUpRight, ArrowDownRight, DollarSign, LineChart, Edit, X } from "lucide-react";
 import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -33,12 +34,14 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { StockPriceChart } from "./StockPriceChart";
 import { TransactionForm } from "./TransactionForm";
 import { useBackButton } from "@/hooks/useBackButton";
+import { TableVirtuoso } from "react-virtuoso";
 
 interface TransactionListProps {
   transactions: Transaction[];
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Transaction>) => void;
   onFilter: (filters: FilterOptions) => Transaction[];
+  onBulkDelete?: (ids: string[]) => Promise<{ deleted: number; notFound: number }>;
   // Helper functions needed for Edit Form
   buyTransactions: Transaction[];
   getBuyTransactionsForSale: (ticker: string) => Transaction[];
@@ -50,6 +53,7 @@ export function TransactionList({
   onDelete,
   onUpdate,
   onFilter,
+  onBulkDelete,
   buyTransactions,
   getBuyTransactionsForSale,
   existingCategories = []
@@ -62,6 +66,9 @@ export function TransactionList({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedStock, setSelectedStock] = useState<{ ticker: string, currency: 'THB' | 'USD' } | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteIds, setBulkDeleteIds] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const formatCurrency = (value: number, currency: string = 'THB') => {
     return new Intl.NumberFormat('th-TH', {
@@ -94,6 +101,51 @@ export function TransactionList({
     if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบรายการ ${ticker} นี้?`)) {
       onDelete(id);
       toast.success(`ลบรายการ ${ticker} สำเร็จ`);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!onBulkDelete) {
+      toast.error('Bulk delete not available');
+      return;
+    }
+
+    try {
+      // Parse IDs from text input
+      // Supports formats: ['id1', 'id2'] or id1, id2 or id1\nid2
+      let ids: string[] = [];
+      const text = bulkDeleteIds.trim();
+
+      if (text.startsWith('[')) {
+        // JSON array format
+        ids = JSON.parse(text);
+      } else {
+        // Comma or newline separated
+        ids = text.split(/[,\n]/).map(s => s.trim().replace(/['"`]/g, '')).filter(Boolean);
+      }
+
+      if (ids.length === 0) {
+        toast.error('กรุณาใส่ ID อย่างน้อย 1 รายการ');
+        return;
+      }
+
+      if (!window.confirm(`ยืนยันการลบ ${ids.length} รายการ?`)) {
+        return;
+      }
+
+      setIsDeleting(true);
+      const result = await onBulkDelete(ids);
+
+      toast.success(`ลบสำเร็จ ${result.deleted} รายการ` +
+        (result.notFound > 0 ? `, ไม่พบ ${result.notFound} รายการ` : ''));
+
+      setBulkDeleteOpen(false);
+      setBulkDeleteIds('');
+    } catch (error) {
+      console.error('Bulk delete failed:', error);
+      toast.error('เกิดข้อผิดพลาด: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -160,6 +212,45 @@ export function TransactionList({
         </Dialog>
       )}
 
+      {/* Bulk Delete Dialog */}
+      {onBulkDelete && (
+        <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+          <DialogContent className="sm:max-w-[500px] bg-background border-2 border-foreground">
+            <DialogHeader>
+              <DialogTitle>🗑️ ลบรายการแบบ Bulk</DialogTitle>
+              <DialogDescription>
+                ใส่ ID ของรายการที่ต้องการลบ (รองรับทั้ง JSON Array หรือ คั่นด้วย comma/บรรทัดใหม่)
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Textarea
+                placeholder={`['1766908941627', '1766911164604']
+หรือ
+1766908941627, 1766911164604
+หรือ
+1766908941627
+1766911164604`}
+                value={bulkDeleteIds}
+                onChange={(e) => setBulkDeleteIds(e.target.value)}
+                className="min-h-[150px] font-mono text-sm"
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setBulkDeleteOpen(false)} disabled={isDeleting}>
+                  ยกเลิก
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleBulkDelete}
+                  disabled={isDeleting || !bulkDeleteIds.trim()}
+                >
+                  {isDeleting ? 'กำลังลบ...' : 'ลบทั้งหมด'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       <CardHeader className="border-b-2 border-foreground">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <CardTitle className="text-xl font-bold uppercase tracking-wide">
@@ -213,13 +304,28 @@ export function TransactionList({
                   ))}
               </SelectContent>
             </Select>
+
+            {/* Bulk Delete Button */}
+            {onBulkDelete && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                ลบ Bulk
+              </Button>
+            )}
           </div>
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
+        <div className="overflow-x-auto" style={{ height: Math.min(filteredTransactions.length * 60 + 48, 600) }}>
+          <TableVirtuoso
+            style={{ height: '100%' }}
+            data={filteredTransactions}
+            fixedHeaderContent={() => (
               <TableRow className="border-b-2 border-foreground bg-secondary">
                 <TableHead className="font-bold uppercase">วันที่</TableHead>
                 <TableHead className="font-bold uppercase">ประเภท</TableHead>
@@ -232,112 +338,118 @@ export function TransactionList({
                 <TableHead className="font-bold uppercase text-center">หมวดหมู่</TableHead>
                 <TableHead className="font-bold uppercase text-center">จัดการ</TableHead>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTransactions.map((transaction) => {
-                const currency = transaction.currency || 'THB';
-                return (
-                  <TableRow key={transaction.id} className="border-b border-border hover:bg-secondary/50">
-                    <TableCell className="font-mono text-sm">
-                      {formatDate(transaction.timestamp)}
-                    </TableCell>
-                    <TableCell>
-                      {/* ... Badge logic ... */}
-                      <Badge
-                        variant="outline"
-                        className={`border-2 font-bold uppercase ${transaction.type === 'buy'
-                          ? 'border-green-500 text-green-500 bg-green-500/10'
-                          : transaction.type === 'sell'
-                            ? 'border-red-500 text-red-500 bg-red-500/10'
-                            : 'border-amber-500 text-amber-600 bg-amber-50'
-                          }`}
-                      >
-                        {transaction.type === 'buy' ? (
-                          <><ArrowUpRight className="h-3 w-3 mr-1" /> ซื้อ</>
-                        ) : transaction.type === 'sell' ? (
-                          <><ArrowDownRight className="h-3 w-3 mr-1" /> ขาย</>
-                        ) : (
-                          <><DollarSign className="h-3 w-3 mr-1" /> ปันผล</>
-                        )}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-bold font-mono text-lg">
+            )}
+            components={{
+              Table: React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>((props, ref) => <Table {...props} ref={ref} />),
+              TableHead: React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>((props, ref) => <TableHeader {...props} ref={ref} />),
+              TableRow: React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTMLTableRowElement>>((props, ref) => <TableRow {...props} ref={ref} className="border-b border-border hover:bg-secondary/50" />),
+              TableBody: React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>((props, ref) => <TableBody {...props} ref={ref} />),
+            }}
+            itemContent={(index, transaction) => {
+              const currency = transaction.currency || 'THB';
+              return (
+                <>
+                  <TableCell className="font-mono text-sm">
+                    {formatDate(transaction.timestamp)}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={`border-2 font-bold uppercase ${transaction.type === 'buy'
+                        ? 'border-green-500 text-green-500 bg-green-500/10'
+                        : transaction.type === 'sell'
+                          ? 'border-red-500 text-red-500 bg-red-500/10'
+                          : 'border-amber-500 text-amber-600 bg-amber-50'
+                        }`}
+                    >
+                      {transaction.type === 'buy' ? (
+                        <><ArrowUpRight className="h-3 w-3 mr-1" /> ซื้อ</>
+                      ) : transaction.type === 'sell' ? (
+                        <><ArrowDownRight className="h-3 w-3 mr-1" /> ขาย</>
+                      ) : (
+                        <><DollarSign className="h-3 w-3 mr-1" /> ปันผล</>
+                      )}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-bold font-mono text-lg">
+                    <Button
+                      variant="link"
+                      className="p-0 h-auto font-bold font-mono text-lg uppercase decoration-primary hover:text-primary"
+                      onClick={() => setSelectedStock({ ticker: transaction.ticker, currency })}
+                    >
+                      {transaction.ticker} <LineChart className="ml-2 h-4 w-4 opacity-50" />
+                    </Button>
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {transaction.shares.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {currency === 'USD' ? '$' : '฿'}{transaction.pricePerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-right font-mono font-medium">
+                    {formatCurrency(transaction.totalValue, currency)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-muted-foreground">
+                    {transaction.type === 'dividend' && transaction.withholdingTax ? (
+                      <span className="text-amber-600/70" title="ภาษีหัก ณ ที่จ่าย">
+                        {formatCurrency(transaction.withholdingTax, currency)}
+                      </span>
+                    ) : (
+                      formatCurrency(transaction.commission, currency)
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {transaction.type === 'sell' && transaction.realizedPL !== undefined ? (
+                      <span className={`font-mono font-medium ${transaction.realizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {formatCurrency(transaction.realizedPL, currency)}
+                        <span className="block text-xs">
+                          ({transaction.realizedPL >= 0 ? '+' : ''}{transaction.realizedPLPercent?.toFixed(2)}%)
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant="outline" className="border-2 font-medium">
+                      {getCategoryLabel(transaction.category)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex items-center justify-center gap-1">
                       <Button
-                        variant="link"
-                        className="p-0 h-auto font-bold font-mono text-lg uppercase decoration-primary hover:text-primary"
-                        onClick={() => setSelectedStock({ ticker: transaction.ticker, currency })}
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setEditingTransaction(transaction)}
+                        className="hover:bg-primary/20 hover:text-primary"
                       >
-                        {transaction.ticker} <LineChart className="ml-2 h-4 w-4 opacity-50" />
+                        <Edit className="h-4 w-4" />
                       </Button>
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {transaction.shares.toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {currency === 'USD' ? '$' : '฿'}{transaction.pricePerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell className="text-right font-mono font-medium">
-                      {formatCurrency(transaction.totalValue, currency)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-muted-foreground">
-                      {transaction.type === 'dividend' && transaction.withholdingTax ? (
-                        <span className="text-amber-600/70" title="ภาษีหัก ณ ที่จ่าย">
-                          {formatCurrency(transaction.withholdingTax, currency)}
-                        </span>
-                      ) : (
-                        formatCurrency(transaction.commission, currency)
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {transaction.type === 'sell' && transaction.realizedPL !== undefined ? (
-                        <span className={`font-mono font-medium ${transaction.realizedPL >= 0 ? 'text-green-500' : 'text-red-500'
-                          }`}>
-                          {formatCurrency(transaction.realizedPL, currency)}
-                          <span className="block text-xs">
-                            ({transaction.realizedPL >= 0 ? '+' : ''}{transaction.realizedPLPercent?.toFixed(2)}%)
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="outline" className="border-2 font-medium">
-                        {getCategoryLabel(transaction.category)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingTransaction(transaction)}
-                          className="hover:bg-primary/20 hover:text-primary"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(transaction.id, transaction.ticker)}
-                          className="hover:bg-destructive hover:text-destructive-foreground"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-              {filteredTransactions.length === 0 && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(transaction.id, transaction.ticker)}
+                        className="hover:bg-destructive hover:text-destructive-foreground"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </>
+              );
+            }}
+          />
+          {filteredTransactions.length === 0 && (
+            <Table>
+              <TableBody>
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                     ไม่พบรายการซื้อขาย
                   </TableCell>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableBody>
+            </Table>
+          )}
         </div>
       </CardContent >
     </Card >

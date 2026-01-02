@@ -2,10 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { ExportTools } from "./ExportTools";
-import { StockSplitTool } from "./StockSplitTool";
+import { StockSplitManager } from "./StockSplitManager";
 import { TaxCalculator } from "./TaxCalculator";
 import { RefreshCw, LogOut, Cloud, CloudOff, User, Settings, PenTool, Database, Info, ChevronsRight, ChevronRight, Calculator } from "lucide-react";
-import { Transaction, Holding, PortfolioSummary } from "@/types/portfolio";
+import { Transaction, Holding, PortfolioSummary, StockSplit } from "@/types/portfolio";
 import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,10 @@ interface SettingsTabProps {
     summary: PortfolioSummary;
     exchangeRate: number;
     recalculateHistory: () => Promise<void>;
+    // Stock splits (Config Sheet)
+    stockSplits: StockSplit[];
+    addStockSplit: (ticker: string, ratio: number, effectiveDate: Date) => Promise<void>;
+    removeStockSplit: (splitId: string) => Promise<void>;
 }
 
 export function SettingsTab({
@@ -46,6 +50,9 @@ export function SettingsTab({
     summary,
     exchangeRate,
     recalculateHistory,
+    stockSplits,
+    addStockSplit,
+    removeStockSplit,
 }: SettingsTabProps) {
 
     const [openTools, setOpenTools] = useState(true);
@@ -144,12 +151,15 @@ export function SettingsTab({
                         </CollapsibleTrigger>
                         <CollapsibleContent>
                             <div className="p-4 space-y-6 pt-2">
-                                {onUpdateTransaction && (
-                                    <div className="pb-4 border-b border-border/50">
-                                        <h3 className="text-sm font-semibold mb-3 text-muted-foreground">จัดการแตกพาร์ (Stock Split)</h3>
-                                        <StockSplitTool transactions={transactions} onUpdateTransaction={onUpdateTransaction} />
-                                    </div>
-                                )}
+                                <div className="pb-4 border-b border-border/50">
+                                    <h3 className="text-sm font-semibold mb-3 text-muted-foreground">จัดการแตกพาร์ (Stock Split)</h3>
+                                    <StockSplitManager
+                                        stockSplits={stockSplits}
+                                        onAddSplit={addStockSplit}
+                                        onRemoveSplit={removeStockSplit}
+                                        tickers={Array.from(new Set(transactions.map(t => t.ticker)))}
+                                    />
+                                </div>
 
                                 <div className="pb-4 border-b border-border/50">
                                     <h3 className="text-sm font-semibold mb-3 text-muted-foreground">เครื่องมือซ่อมแซม (Fix Tools)</h3>

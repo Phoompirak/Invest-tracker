@@ -1,6 +1,8 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
-import { Transaction, Holding, PortfolioSummary, TransactionType, PortfolioCategory, FilterOptions } from '@/types/portfolio';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { Transaction, Holding, PortfolioSummary, TransactionType, PortfolioCategory, FilterOptions, StockSplit } from '@/types/portfolio';
+
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from "sonner";
 import {
   saveTransactions,
   loadTransactions,
@@ -23,9 +25,14 @@ import {
   deleteTransactionFromSheet,
   updateTransactionInSheet,
   syncPendingChanges,
+  saveAllTransactionsToSheet,
+  fetchStockSplits,
+  addStockSplit as addStockSplitToSheet,
+  deleteStockSplit as deleteStockSplitFromSheet,
 } from '@/services/sheetsService';
 
 import { fetchCurrentPrices, fetchExchangeRate } from '@/services/stockPriceService';
+import { deduplicateTransactions, stripRealizedPL } from '@/lib/portfolioCalculations';
 
 // Helper to safely cast to number
 const cNumber = (val: any) => Number(val) || 0;
@@ -43,6 +50,55 @@ export function usePortfolio() {
   const [pendingCount, setPendingCount] = useState(getPendingChanges().length);
   const [customCategories, setCustomCategories] = useState<string[]>(loadCustomCategories());
   const [hiddenCategories, setHiddenCategories] = useState<string[]>(loadHiddenCategories());
+  const [stockSplits, setStockSplits] = useState<StockSplit[]>([]); // Stock splits from Config Sheet
+
+  // Recalculate FIFO history using Web Worker
+  // Can accept explicit transactions list and splits to avoid waiting for state update
+  const recalculateHistory = useCallback(async (transactionsOverride?: Transaction[], stockSplitsOverride?: StockSplit[]) => {
+    const targetTransactions = transactionsOverride || transactions;
+    const targetSplits = stockSplitsOverride || stockSplits;
+
+    if (targetTransactions.length === 0) return;
+
+    // Create worker dynamically
+    const worker = new Worker(
+      new URL('../workers/portfolioWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+
+    return new Promise<void>((resolve, reject) => {
+      worker.onmessage = (event) => {
+        const { type, transactions: updatedTransactions, error } = event.data;
+
+        if (type === 'success') {
+          setTransactions(updatedTransactions);
+          saveTransactions(updatedTransactions); // Save to LOCAL storage only
+
+          // NOTE: We intentionally do NOT sync recalculated P/L back to Sheets.
+          // Sheets should remain pristine (only user-added transactions).
+          // Calculated values (realizedPL, etc.) are stored locally only.
+          console.log('Recalculation complete. Saved to local storage (Sheets not modified).');
+
+          worker.terminate();
+          resolve();
+        } else if (type === 'error') {
+          console.error('Worker error:', error);
+          worker.terminate();
+          reject(new Error(error));
+        }
+      };
+
+      worker.onerror = (error) => {
+        console.error('Worker failed:', error);
+        worker.terminate();
+        reject(error);
+      };
+
+      // Send transactions and splits to worker
+      worker.postMessage({ type: 'recalculate', transactions: targetTransactions, stockSplits: targetSplits });
+    });
+  }, [isAuthenticated, isGapiReady, spreadsheetId, transactions, stockSplits]);
+
   const [manualPrices, setManualPrices] = useState<Record<string, number>>(loadManualPrices());
   const [currency, setCurrencyState] = useState<'THB' | 'USD'>(() => {
     if (typeof window !== 'undefined') {
@@ -57,8 +113,18 @@ export function usePortfolio() {
   }, []);
 
   // Load transactions on mount or when auth changes
+  // Use ref to prevent duplicate loads (especially in React StrictMode)
+  const isLoadingRef = useRef(false);
+
   useEffect(() => {
     const loadData = async () => {
+      // Guard against concurrent executions
+      if (isLoadingRef.current) {
+        console.log('loadData already in progress, skipping...');
+        return;
+      }
+      isLoadingRef.current = true;
+
       setIsLoading(true);
 
       // Always start with local data
@@ -80,10 +146,47 @@ export function usePortfolio() {
             setPendingCount(0);
           }
 
+          // Load stock splits from Config sheet
+          const splits = await fetchStockSplits(sheetId);
+          setStockSplits(splits);
+          console.log(`Loaded ${splits.length} stock splits from Config sheet`);
+
           // Fetch from sheets
           const remoteData = await fetchTransactions(sheetId);
-          setTransactions(remoteData);
-          saveTransactions(remoteData);
+
+          // ⚠️ CRITICAL: Deduplicate by ID (not content) to fix inflated P/L bug
+          const { unique: uniqueTransactions, duplicateIds } = deduplicateTransactions(remoteData);
+
+          if (duplicateIds.length > 0) {
+            console.log(`Deduplicated: Removed ${duplicateIds.length} duplicate items`);
+
+            // Show toast with Copy IDs action button
+            toast.error("⚠️ Duplicate Transactions Detected", {
+              description: `Found ${duplicateIds.length} duplicates (IDs: ${duplicateIds.slice(0, 3).join(', ')}${duplicateIds.length > 3 ? '...' : ''})`,
+              duration: 10000,
+              action: {
+                label: "📋 Copy IDs",
+                onClick: () => {
+                  const idsJson = JSON.stringify(duplicateIds);
+                  navigator.clipboard.writeText(idsJson);
+                  toast.success("Copied IDs to clipboard!", { duration: 2000 });
+                },
+              },
+            });
+          }
+
+          // ⚠️ CRITICAL: Clear realizedPL before recalculation to avoid using stale/incorrect values
+          const cleanTransactions = stripRealizedPL(uniqueTransactions);
+
+          console.log('Data loaded. Triggering P/L Recalc with clean data.');
+          setTransactions(cleanTransactions);
+          saveTransactions(cleanTransactions);
+
+          // Force recalc with explicit splits we just loaded
+          setTimeout(() => {
+            recalculateHistory(cleanTransactions, splits).catch(console.error);
+          }, 100);
+
           setLastSyncedState(new Date());
           setIsSyncing(false);
         } catch (error) {
@@ -93,10 +196,11 @@ export function usePortfolio() {
       }
 
       setIsLoading(false);
+      isLoadingRef.current = false;
     };
 
     loadData();
-  }, [isAuthenticated, isGapiReady]);
+  }, [isAuthenticated, isGapiReady]); // Removed recalculateHistory to avoid infinite loop
 
   // Discover and manage categories from transactions
   useEffect(() => {
@@ -329,92 +433,73 @@ export function usePortfolio() {
     }
   }, [isAuthenticated, isGapiReady, spreadsheetId]);
 
+  /**
+   * ลบ Transactions หลายรายการพร้อมกันโดยใช้ ID
+   * @param ids - Array ของ Transaction IDs ที่ต้องการลบ
+   * @returns จำนวนรายการที่ลบสำเร็จ
+   */
+  const bulkDeleteByIds = useCallback(async (ids: string[]): Promise<{ deleted: number; notFound: number }> => {
+    // Filter duplicates from input
+    const uniqueIds = [...new Set(ids)];
 
+    // Find which transactions actually exist
+    const existingIds = new Set(transactions.map(t => t.id));
+    const idsToDelete = uniqueIds.filter(id => existingIds.has(id));
+    const notFoundCount = uniqueIds.length - idsToDelete.length;
 
-  // Fix: Recalculate FIFO history for all transactions to ensure correct Realized P/L
-  const recalculateHistory = useCallback(async () => {
-    setTransactions(prev => {
-      // 1. Sort all transactions by date
-      const sorted = [...prev].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    if (idsToDelete.length === 0) {
+      return { deleted: 0, notFound: notFoundCount };
+    }
 
-      // 2. Track inventory PER TICKER (Map of ticker -> array of lots)
-      const inventoryByTicker = new Map<string, { id: string; shares: number; costPerShare: number; remaining: number }[]>();
+    // Calculate new transactions list after deletion
+    const remainingTransactions = transactions.filter(t => !idsToDelete.includes(t.id));
 
-      const updatedTransactions = sorted.map(t => {
-        if (t.type === 'buy') {
-          // Cost per share = (totalValue + commission) / shares
-          // This ensures commission is included in the cost basis
-          const costPerShare = (t.totalValue + t.commission) / t.shares;
+    // Strip realizedPL for fresh recalculation
+    const cleanTransactions = stripRealizedPL(remainingTransactions);
 
-          // Get or create inventory array for this ticker
-          const tickerInventory = inventoryByTicker.get(t.ticker) || [];
-          tickerInventory.push({
-            id: t.id,
-            shares: t.shares,
-            costPerShare: costPerShare,
-            remaining: t.shares
-          });
-          inventoryByTicker.set(t.ticker, tickerInventory);
+    // Update local state
+    setTransactions(cleanTransactions);
+    saveTransactions(cleanTransactions);
 
-          return t;
-        } else if (t.type === 'sell') {
-          let sharesToSell = t.shares;
-          let totalCost = 0;
-
-          // Get inventory for THIS ticker only
-          const tickerInventory = inventoryByTicker.get(t.ticker) || [];
-
-          // Match with available inventory (FIFO) for this ticker
-          for (const lot of tickerInventory) {
-            if (sharesToSell <= 0.000001) break; // Float tolerance
-            if (lot.remaining <= 0.000001) continue;
-
-            const taking = Math.min(lot.remaining, sharesToSell);
-            // Use costPerShare which INCLUDES buy commission
-            totalCost += taking * lot.costPerShare;
-
-            lot.remaining -= taking;
-            sharesToSell -= taking;
-          }
-
-          // Update P/L: saleValue - totalCost (with buy commission) - sell commission
-          const saleValue = t.shares * t.pricePerShare;
-          const realizedPL = saleValue - totalCost - t.commission;
-          let realizedPLPercent = 0;
-
-          const impliedCost = saleValue - realizedPL - t.commission;
-          if (impliedCost > 0) {
-            realizedPLPercent = (realizedPL / impliedCost) * 100;
-          }
-
-          return {
-            ...t,
-            realizedPL,
-            realizedPLPercent
-          };
+    // Sync to sheets
+    if (isAuthenticated && isGapiReady && spreadsheetId && isOnline()) {
+      setIsSyncing(true);
+      try {
+        for (const id of idsToDelete) {
+          await deleteTransactionFromSheet(spreadsheetId, id);
         }
-        return t;
-      });
-
-      saveTransactions(updatedTransactions);
-
-      // Sync to sheets if online
-      if (isAuthenticated && isGapiReady && spreadsheetId && isOnline()) {
-        // This acts as a "mass update". In reality, we might want to just overwrite the whole sheet 
-        // or update changed rows. For now, let's just update local and queue changes? 
-        // Updating 100s of rows individually is slow.
-        // A better approach for "fix" is to maybe just let them sync slowly or rely on local assumption.
-        // For this immediate fix, we'll try to batch update if possible, or just queue updates for SELLS.
-        const changedSells = updatedTransactions.filter(t => t.type === 'sell');
-        changedSells.forEach(t => {
-          queueChange({ id: t.id, type: 'update', transaction: t, timestamp: new Date() });
-        });
-        setPendingCount(prev => prev + changedSells.length);
+        setLastSyncedState(new Date());
+        console.log(`Bulk deleted ${idsToDelete.length} transactions from Sheets`);
+      } catch (error) {
+        console.error('Failed to bulk delete from sheets:', error);
+        // Queue remaining for later
+        for (const id of idsToDelete) {
+          queueChange({ id, type: 'delete', timestamp: new Date() });
+        }
+        setPendingCount(prev => prev + idsToDelete.length);
+      } finally {
+        setIsSyncing(false);
       }
+    } else {
+      // Offline - queue all
+      for (const id of idsToDelete) {
+        queueChange({ id, type: 'delete', timestamp: new Date() });
+      }
+      setPendingCount(prev => prev + idsToDelete.length);
+    }
 
-      return updatedTransactions;
-    });
-  }, [isAuthenticated, isGapiReady, spreadsheetId]);
+    // ⚠️ CRITICAL: Trigger recalculation to update P/L values
+    console.log('Bulk delete complete. Triggering P/L Recalc...');
+    setTimeout(() => {
+      recalculateHistory(cleanTransactions).catch(console.error);
+    }, 100);
+
+    return { deleted: idsToDelete.length, notFound: notFoundCount };
+  }, [transactions, isAuthenticated, isGapiReady, spreadsheetId, recalculateHistory]);
+
+
+
+
 
   const manualSync = useCallback(async () => {
     if (!isAuthenticated || !isGapiReady || !isOnline()) return;
@@ -427,8 +512,40 @@ export function usePortfolio() {
 
       await syncPendingChanges(sheetId);
       const remoteData = await fetchTransactions(sheetId);
-      setTransactions(remoteData);
-      saveTransactions(remoteData);
+
+      // ⚠️ CRITICAL: Deduplicate by ID (not content) to fix inflated P/L bug
+      const { unique: uniqueTransactions, duplicateIds } = deduplicateTransactions(remoteData);
+
+      if (duplicateIds.length > 0) {
+        console.log(`Deduplicated: Removed ${duplicateIds.length} items. Triggering P/L Recalc.`);
+
+        // Show toast with Copy IDs action button
+        toast.error("⚠️ Duplicate Transactions Detected", {
+          description: `Found ${duplicateIds.length} duplicates (IDs: ${duplicateIds.slice(0, 3).join(', ')}${duplicateIds.length > 3 ? '...' : ''})`,
+          duration: 10000,
+          action: {
+            label: "📋 Copy IDs",
+            onClick: () => {
+              const idsJson = JSON.stringify(duplicateIds);
+              navigator.clipboard.writeText(idsJson);
+              toast.success("Copied IDs to clipboard!", { duration: 2000 });
+            },
+          },
+        });
+      }
+
+      // ⚠️ CRITICAL: Clear realizedPL before recalculation to avoid using stale/incorrect values
+      const cleanTransactions = stripRealizedPL(uniqueTransactions);
+
+      // Always trigger recalculation with clean data
+      setTransactions(cleanTransactions);
+      saveTransactions(cleanTransactions);
+
+      // Force recalc to get correct P/L values
+      setTimeout(() => {
+        recalculateHistory(cleanTransactions).catch(console.error);
+      }, 100);
+
       setPendingCount(0);
       setLastSyncedState(new Date());
     } catch (error) {
@@ -743,6 +860,42 @@ export function usePortfolio() {
     saveCustomCategories(updatedCustom);
   }, [customCategories, hiddenCategories]);
 
+  // Stock split management
+  const addStockSplit = useCallback(async (ticker: string, ratio: number, effectiveDate: Date) => {
+    if (!spreadsheetId) {
+      console.error('No spreadsheet ID available for adding stock split');
+      return;
+    }
+
+    try {
+      const newSplit = await addStockSplitToSheet(spreadsheetId, { ticker, ratio, effectiveDate });
+      setStockSplits(prev => [...prev, newSplit]);
+      console.log('Stock split added:', newSplit);
+
+      // Trigger recalculation since splits affect P/L
+      await recalculateHistory();
+    } catch (error) {
+      console.error('Failed to add stock split:', error);
+      throw error;
+    }
+  }, [spreadsheetId, recalculateHistory]);
+
+  const removeStockSplit = useCallback(async (splitId: string) => {
+    if (!spreadsheetId) return;
+
+    try {
+      await deleteStockSplitFromSheet(spreadsheetId, splitId);
+      setStockSplits(prev => prev.filter(s => s.id !== splitId));
+      console.log('Stock split removed:', splitId);
+
+      // Trigger recalculation
+      await recalculateHistory();
+    } catch (error) {
+      console.error('Failed to remove stock split:', error);
+      throw error;
+    }
+  }, [spreadsheetId, recalculateHistory]);
+
   return {
     transactions,
     holdings,
@@ -753,7 +906,7 @@ export function usePortfolio() {
     filterTransactions,
     getBuyTransactionsForSale,
     getCurrentPrice,
-    // New sync-related properties
+    // Sync-related properties
     isLoading,
     isSyncing,
     lastSynced,
@@ -773,6 +926,12 @@ export function usePortfolio() {
     currency,
     setCurrency,
     manualPrices,
+    // Stock splits
+    stockSplits,
+    addStockSplit,
+    removeStockSplit,
+    // Bulk operations
+    bulkDeleteByIds,
   };
 }
 

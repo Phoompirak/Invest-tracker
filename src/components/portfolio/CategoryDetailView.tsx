@@ -2,8 +2,9 @@ import { ArrowLeft, TrendingUp, TrendingDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Holding, PortfolioSummary, PortfolioCategory } from "@/types/portfolio";
+import { Holding, PortfolioSummary, PortfolioCategory, StockSplit } from "@/types/portfolio";
 import { useBackButton } from "@/hooks/useBackButton";
+import { HoldingCard } from "./HoldingCard";
 
 interface CategoryDetailViewProps {
     category: string;
@@ -19,6 +20,7 @@ interface CategoryDetailViewProps {
     CategoryIcon: React.ComponentType<{ className?: string }>;
     exchangeRate: number;
     currency: 'THB' | 'USD';
+    stockSplits?: StockSplit[];
 }
 
 export function CategoryDetailView({
@@ -35,6 +37,7 @@ export function CategoryDetailView({
     CategoryIcon,
     exchangeRate,
     currency,
+    stockSplits = [],
 }: CategoryDetailViewProps) {
     // Enable mobile back button
     useBackButton(true, (open) => {
@@ -125,55 +128,25 @@ export function CategoryDetailView({
                             <p>ยังไม่มีสินทรัพย์ในหมวดหมู่นี้</p>
                         </Card>
                     ) : (
-                        holdings.map((holding) => (
-                            <Card
-                                key={holding.ticker}
-                                onClick={() => onHoldingClick(holding)}
-                                className="p-4 cursor-pointer hover:bg-secondary/50 transition-colors border-l-4 border-l-primary/30"
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-3 h-3 rounded-full ${holding.isClosed ? 'bg-amber-500' : 'bg-primary'}`} />
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <p className="font-bold text-foreground uppercase">{holding.ticker}</p>
-                                                <Badge variant="outline" className={`text-[9px] px-1 py-0 h-4 ${holding.isClosed
-                                                    ? 'border-amber-500/50 text-amber-600 bg-amber-50 dark:bg-amber-950/30'
-                                                    : 'border-green-500/50 text-green-600 bg-green-50 dark:bg-green-950/30'
-                                                    }`}>
-                                                    {holding.isClosed ? 'ขายแล้ว' : 'ถืออยู่'}
-                                                </Badge>
-                                            </div>
-                                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                <span>{holding.totalShares.toLocaleString(undefined, { maximumFractionDigits: 4 })} หุ้น</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="font-bold font-mono text-foreground">
-                                            {holding.isClosed ? (
-                                                showValue ? formatCurrency(convertValue(holding.realizedPL)) : "••••••"
-                                            ) : (
-                                                <span className="text-muted-foreground text-sm">ถืออยู่</span>
-                                            )}
-                                        </p>
-                                        {holding.isClosed ? (
-                                            <div className={`flex items-center justify-end gap-1 text-xs ${holding.realizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                {holding.realizedPL >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                                                <span>กำไรขาย</span>
-                                            </div>
-                                        ) : holding.realizedPL !== 0 ? (
-                                            <div className={`flex items-center justify-end gap-1 text-xs ${holding.realizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                {holding.realizedPL >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                                                <span className="font-mono">
-                                                    {showValue ? formatCurrency(convertValue(holding.realizedPL)) : "••••••"}
-                                                </span>
-                                            </div>
-                                        ) : null}
-                                    </div>
-                                </div>
-                            </Card>
-                        ))
+                        holdings.map((holding) => {
+                            // Find any stock splits for this holding
+                            const holdingSplits = stockSplits.filter(s => s.ticker === holding.ticker);
+                            const latestSplit = holdingSplits.length > 0
+                                ? holdingSplits.sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime())[0]
+                                : undefined;
+
+                            return (
+                                <HoldingCard
+                                    key={holding.ticker}
+                                    holding={holding}
+                                    showValue={showValue}
+                                    formatCurrency={formatCurrency}
+                                    convertValue={convertValue}
+                                    onClick={() => onHoldingClick(holding)}
+                                    latestSplit={latestSplit}
+                                />
+                            );
+                        })
                     )}
                 </div>
             </div>

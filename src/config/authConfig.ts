@@ -12,3 +12,4 @@ export const GOOGLE_SCOPES = [
 // Spreadsheet configuration
 export const SPREADSHEET_NAME = 'Invest-Tracker Portfolio Data';
 export const TRANSACTIONS_SHEET_NAME = 'Transactions';
+export const CONFIG_SHEET_NAME = 'Config'; // For stock splits, adjustments, etc.

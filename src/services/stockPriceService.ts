@@ -27,9 +27,8 @@ const YahooFinanceProvider: PriceProvider = {
         try {
             let searchTicker = ticker;
 
-            // Determine the correct Yahoo Finance symbol
             if (ticker.toUpperCase().includes('GOLD')) {
-                searchTicker = 'XAUUSD=X';
+                searchTicker = 'GC=F'; // Switch to Gold Futures which is more reliable than XAUUSD=X on Yahoo
             } else if (currency === 'USD') {
                 searchTicker = ticker;
             } else if (!ticker.includes('.') && !ticker.includes('=')) {
@@ -37,7 +36,17 @@ const YahooFinanceProvider: PriceProvider = {
             }
 
             const url = `${YAHOO_BASE_URL}/${searchTicker}?interval=1d&range=5d`;
-            const response = await fetch(`${CORS_PROXY}${encodeURIComponent(url)}`);
+
+            // Try primary proxy
+            let fetchUrl = `${CORS_PROXY}${encodeURIComponent(url)}`;
+            let response = await fetch(fetchUrl);
+
+            // If primary proxy fails (404/500), try backup proxy
+            if (!response.ok) {
+                // Secondary proxy: allorigins
+                fetchUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+                response = await fetch(fetchUrl);
+            }
 
             if (!response.ok) return null;
 
@@ -46,13 +55,23 @@ const YahooFinanceProvider: PriceProvider = {
                 const closes = data.chart.result[0].indicators.quote[0].close;
                 for (let i = closes.length - 1; i >= 0; i--) {
                     if (closes[i] != null && closes[i] > 0) {
-                        return closes[i];
+                        let finalPrice = closes[i];
+
+                        // Automatic conversion to THB if requested and likely USD source
+                        const isThai = ticker.includes('.BK');
+                        const isExchangeRate = ticker === 'USDTHB=X';
+
+                        if (currency === 'THB' && !isThai && !isExchangeRate) {
+                            const rate = await fetchExchangeRate();
+                            finalPrice = finalPrice * rate;
+                        }
+                        return finalPrice;
                     }
                 }
             }
             return null;
         } catch (error) {
-            console.warn(`Yahoo Finance fetch failed for ${ticker}:`, error);
+            // console.warn(`Yahoo Finance fetch failed for ${ticker}:`, error);
             return null;
         }
     }
@@ -67,12 +86,19 @@ const CoinGeckoProvider: PriceProvider = {
             if (ticker.toUpperCase().includes('GOLD')) coinId = 'pax-gold'; // Proxy for Gold
             else if (ticker.toUpperCase() === 'BTC') coinId = 'bitcoin';
             else if (ticker.toUpperCase() === 'ETH') coinId = 'ethereum';
-            else return null; // Only support specific crypto/assets
+            else return null;
 
-            const targetCurrency = currency.toLowerCase(); // 'thb' or 'usd'
+            const targetCurrency = currency.toLowerCase();
             const url = `${COINGECKO_BASE_URL}?ids=${coinId}&vs_currencies=${targetCurrency}`;
 
-            const response = await fetch(url);
+            // Try direct first
+            let response = await fetch(url);
+
+            // If CORS fails or other error, try proxy
+            if (!response.ok) {
+                response = await fetch(`${CORS_PROXY}${encodeURIComponent(url)}`);
+            }
+
             if (!response.ok) return null;
 
             const data = await response.json();
@@ -81,7 +107,8 @@ const CoinGeckoProvider: PriceProvider = {
             }
             return null;
         } catch (error) {
-            console.warn(`CoinGecko fetch failed for ${ticker}:`, error);
+            // console.warn(`CoinGecko fetch failed for ${ticker}:`, error);
+            // Suppress log to avoid spam
             return null;
         }
     }
@@ -128,47 +155,33 @@ export async function fetchHistoricalPrices(ticker: string, range: string = '5y'
     }
 }
 
+const PRICE_CACHE: Record<string, { price: number; timestamp: number }> = {};
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export async function fetchCurrentPrices(items: { ticker: string; currency: 'THB' | 'USD' }[]): Promise<Record<string, number>> {
     const prices: Record<string, number> = {};
-    const exchangeRate = await fetchExchangeRate(); // Need rate for conversions if backup provider currency differs (simplified here: provider handles currency request)
+    const exchangeRate = await fetchExchangeRate();
 
     const promises = items.map(async ({ ticker, currency }) => {
+        const cacheKey = `${ticker}-${currency}`;
+        const cached = PRICE_CACHE[cacheKey];
+        if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+            prices[ticker] = cached.price;
+            return;
+        }
+
         let price: number | null = null;
 
         for (const provider of PROVIDERS) {
             price = await provider.getPrice(ticker, currency);
             if (price !== null) {
-                // Gold Conversion Logic (if source is USD/oz but needed THB/gram or similar adjustments)
-                // Note: CoinGecko 'pax-gold' in 'thb' is already price per coin (approx per oz).
-                // API for Gold via Yahoo is XAUUSD=X (USD/oz).
-
-                // If ticker is GOLD, we need to ensure standardized unit (e.g. THB per gram for User's MTS-GOLD?)
-                // User's previous request implies MTS-GOLD is THB based.
-                // standard XAU price is per Troy Oz. 1 Troy Oz = 31.1035 gram.
-                // If ticker is GOLD and we got price (likely per Oz), let's normalize if needed.
-                // However, without strict unit metadata from user, we assume the API returns "Market Price" compatible with "Shares/Units".
-                // For MTS-GOLD (Thai), 1 unit might be 1 gram? Or 1 Baht-weight?
-                // User said "1.61504 ออนซ์" (Ounces). So if we get price per Oz, we are good!
-
-                // Correction: User said "MTS-GOLD 1.61504 ออนซ์". So Price/Oz is correct.
-                // If Yahoo returns XAUUSD=X in USD, and user currency is THB, we must convert USD->THB.
-                // YahooProvider handles symbol selection but returns values in that symbol's currency.
-                // XAUUSD=X is in USD.
-
-                if (ticker.toUpperCase().includes('GOLD') && provider.name === 'Yahoo Finance') {
-                    // Yahoo XAUUSD=X is in USD. If user wanted THB, we must convert.
-                    if (currency === 'THB') {
-                        price = price * exchangeRate;
-                    }
-                }
-
-                console.log(`Fetched ${ticker} via ${provider.name}: ${price}`);
-                break; // Stop at first success
+                break;
             }
         }
 
         if (price !== null) {
             prices[ticker] = price;
+            PRICE_CACHE[cacheKey] = { price, timestamp: Date.now() };
         } else {
             console.warn(`All providers failed for ${ticker}`);
         }
@@ -192,11 +205,22 @@ export function findPriceOnDate(prices: StockPrice[], date: Date): number | null
     return closestPrice;
 }
 
+// Cache for exchange rate
+let exchangeRateCache: { rate: number; timestamp: number } | null = null;
+
 export async function fetchExchangeRate(): Promise<number> {
+    // Check cache
+    if (exchangeRateCache && Date.now() - exchangeRateCache.timestamp < CACHE_DURATION) {
+        return exchangeRateCache.rate;
+    }
+
     try {
         // Try Yahoo first for rate
         const yahooData = await YahooFinanceProvider.getPrice('USDTHB=X', 'USD'); // Currency arg irrelevant for rate ticker
-        if (yahooData) return yahooData;
+        if (yahooData) {
+            exchangeRateCache = { rate: yahooData, timestamp: Date.now() };
+            return yahooData;
+        }
 
         return 34.5;
     } catch (error) {

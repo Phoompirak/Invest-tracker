@@ -1,19 +1,28 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { DimeLayout } from "@/components/portfolio/DimeLayout";
 import { TransactionForm } from "@/components/portfolio/TransactionForm";
-import { TransactionList } from "@/components/portfolio/TransactionList";
-import { PortfolioCharts } from "@/components/portfolio/PortfolioCharts";
 import { BottomNav } from "@/components/portfolio/BottomNav";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useAuth } from "@/contexts/AuthContext";
 import { LoginScreen } from "@/components/auth/LoginScreen";
 import { Helmet } from "react-helmet-async";
 import { Button } from "@/components/ui/button";
-import { Cloud, CloudOff, RefreshCw, LogOut } from "lucide-react";
-import { SettingsTab } from "@/components/portfolio/SettingsTab";
+import { Cloud, CloudOff, RefreshCw, LogOut, Loader2 } from "lucide-react";
 import { CurrencyToggle } from "@/components/ui/currency-toggle";
 import { Navbar } from "@/components/portfolio/Navbar";
 import { useLocation } from "react-router-dom";
+
+// Lazy load heavy components
+const TransactionList = lazy(() => import("@/components/portfolio/TransactionList").then(m => ({ default: m.TransactionList })));
+const PortfolioCharts = lazy(() => import("@/components/portfolio/PortfolioCharts").then(m => ({ default: m.PortfolioCharts })));
+const SettingsTab = lazy(() => import("@/components/portfolio/SettingsTab").then(m => ({ default: m.SettingsTab })));
+
+// Loading fallback for lazy components
+const LazyFallback = () => (
+  <div className="flex items-center justify-center py-12">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+);
 
 const Index = () => {
   const location = useLocation();
@@ -43,6 +52,10 @@ const Index = () => {
     recalculateHistory,
     currency,
     setCurrency,
+    stockSplits,
+    addStockSplit,
+    removeStockSplit,
+    bulkDeleteByIds,
   } = usePortfolio();
 
   // Categories for the form (defaults + custom + any from transactions not in custom yet)
@@ -107,15 +120,18 @@ const Index = () => {
                   getBuyTransactionsForSale={getBuyTransactionsForSale}
                   existingCategories={formCategories}
                 />
-                <TransactionList
-                  transactions={transactions}
-                  onDelete={deleteTransaction}
-                  onUpdate={updateTransaction}
-                  onFilter={filterTransactions}
-                  buyTransactions={transactions.filter(t => t.type === 'buy')}
-                  getBuyTransactionsForSale={getBuyTransactionsForSale}
-                  existingCategories={formCategories}
-                />
+                <Suspense fallback={<LazyFallback />}>
+                  <TransactionList
+                    transactions={transactions}
+                    onDelete={deleteTransaction}
+                    onUpdate={updateTransaction}
+                    onFilter={filterTransactions}
+                    onBulkDelete={bulkDeleteByIds}
+                    buyTransactions={transactions.filter(t => t.type === 'buy')}
+                    getBuyTransactionsForSale={getBuyTransactionsForSale}
+                    existingCategories={formCategories}
+                  />
+                </Suspense>
               </div>
             </div>
           )}
@@ -123,29 +139,36 @@ const Index = () => {
           {activeTab === 'charts' && (
             <div className="px-4 py-6 pb-24">
               <h1 className="text-xl font-bold mb-6">วิเคราะห์พอร์ต</h1>
-              <PortfolioCharts holdings={holdings} transactions={transactions} />
+              <Suspense fallback={<LazyFallback />}>
+                <PortfolioCharts holdings={holdings} transactions={transactions} />
+              </Suspense>
             </div>
           )}
 
           {activeTab === 'profile' && (
-            <SettingsTab
-              user={user}
-              signOut={signOut}
-              isOnline={isOnline}
-              isSyncing={isSyncing}
-              pendingCount={pendingCount}
-              lastSynced={lastSynced}
-              manualSync={manualSync}
-              resetPortfolio={resetPortfolio}
-              currency={currency}
-              setCurrency={setCurrency}
-              transactions={transactions}
-              onUpdateTransaction={updateTransaction}
-              holdings={holdings}
-              summary={summary}
-              exchangeRate={exchangeRate}
-              recalculateHistory={recalculateHistory}
-            />
+            <Suspense fallback={<LazyFallback />}>
+              <SettingsTab
+                user={user}
+                signOut={signOut}
+                isOnline={isOnline}
+                isSyncing={isSyncing}
+                pendingCount={pendingCount}
+                lastSynced={lastSynced}
+                manualSync={manualSync}
+                resetPortfolio={resetPortfolio}
+                currency={currency}
+                setCurrency={setCurrency}
+                transactions={transactions}
+                onUpdateTransaction={updateTransaction}
+                holdings={holdings}
+                summary={summary}
+                exchangeRate={exchangeRate}
+                recalculateHistory={recalculateHistory}
+                stockSplits={stockSplits}
+                addStockSplit={addStockSplit}
+                removeStockSplit={removeStockSplit}
+              />
+            </Suspense>
           )}
         </div>
 
