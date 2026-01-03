@@ -166,15 +166,21 @@ export function recalculateFIFO(transactions: Transaction[], splits: StockSplit[
                 sharesToSell -= taking;
             }
 
-            // คำนวณ P/L
+            // คำนวณ P/L (ใช้ค่า Manual ถ้ามี, ถ้าไม่มีใช้ค่าจากการคำนวณ FIFO)
             const saleValue = t.shares * t.pricePerShare;
-            const realizedPL = saleValue - totalCost - t.commission;
+            const calculatedPL = saleValue - totalCost - t.commission;
+            const realizedPL = t.manualRealizedPL !== undefined ? t.manualRealizedPL : calculatedPL;
 
             // คำนวณ P/L เป็น %
             let realizedPLPercent = 0;
+            // Implied Cost = SaleValue - Profit - Commission
             const impliedCost = saleValue - realizedPL - t.commission;
+
             if (impliedCost > 0) {
                 realizedPLPercent = (realizedPL / impliedCost) * 100;
+            } else if (impliedCost === 0) {
+                // กรณีต้นทุนเป็น 0 (เช่น หุ้นได้มาฟรี)
+                realizedPLPercent = 100;
             }
 
             return {

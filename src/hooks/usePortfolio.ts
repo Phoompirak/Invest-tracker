@@ -151,8 +151,8 @@ export function usePortfolio() {
           setStockSplits(splits);
           console.log(`Loaded ${splits.length} stock splits from Config sheet`);
 
-          // Fetch from sheets
-          const remoteData = await fetchTransactions(sheetId);
+          // Fetch from sheets (force refresh to get latest data)
+          const remoteData = await fetchTransactions(sheetId, true);
 
           // ⚠️ CRITICAL: Deduplicate by ID (not content) to fix inflated P/L bug
           const { unique: uniqueTransactions, duplicateIds } = deduplicateTransactions(remoteData);
@@ -511,7 +511,8 @@ export function usePortfolio() {
       if (sheetId !== spreadsheetId) setSpreadsheetId(sheetId);
 
       await syncPendingChanges(sheetId);
-      const remoteData = await fetchTransactions(sheetId);
+      // Force refresh to get latest data from Google Sheets
+      const remoteData = await fetchTransactions(sheetId, true);
 
       // ⚠️ CRITICAL: Deduplicate by ID (not content) to fix inflated P/L bug
       const { unique: uniqueTransactions, duplicateIds } = deduplicateTransactions(remoteData);

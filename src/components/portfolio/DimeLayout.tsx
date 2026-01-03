@@ -193,6 +193,24 @@ export function DimeLayout({
             </div>
           </Card>
 
+          {/* Analytics Link Button */}
+          <Button
+            variant="outline"
+            className="w-full flex items-center justify-between py-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-blue-200 dark:border-blue-800 hover:from-blue-100 hover:to-indigo-100"
+            onClick={() => navigate('/analytics')}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-500 rounded-lg">
+                <BarChart3 className="h-5 w-5 text-white" />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold">วิเคราะห์การลงทุน</p>
+                <p className="text-xs text-muted-foreground">สรุปรายปี • พยากรณ์การเติบโต</p>
+              </div>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </Button>
+
           {/* Dividend Summary Card */}
           {summary.totalDividends > 0 && (
             <Card className="bg-gradient-to-br from-amber-500 via-amber-400 to-yellow-400 text-white p-4 relative overflow-hidden border-0 shadow-lg">

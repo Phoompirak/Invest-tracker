@@ -17,6 +17,7 @@ export function TransactionEditDialog({ transaction, isOpen, onClose, onSave }: 
     const [shares, setShares] = useState("");
     const [commission, setCommission] = useState("");
     const [totalValue, setTotalValue] = useState("");
+    const [manualRealizedPL, setManualRealizedPL] = useState("");
 
     useEffect(() => {
         if (transaction) {
@@ -24,6 +25,7 @@ export function TransactionEditDialog({ transaction, isOpen, onClose, onSave }: 
             setShares(transaction.shares.toString());
             setCommission(transaction.commission.toString());
             setTotalValue(transaction.totalValue.toString());
+            setManualRealizedPL(transaction.manualRealizedPL !== undefined ? transaction.manualRealizedPL.toString() : "");
         }
     }, [transaction]);
 
@@ -44,6 +46,7 @@ export function TransactionEditDialog({ transaction, isOpen, onClose, onSave }: 
             shares: parseFloat(shares) || transaction.shares,
             commission: parseFloat(commission) || 0,
             totalValue: parseFloat(totalValue) || transaction.totalValue,
+            manualRealizedPL: manualRealizedPL ? parseFloat(manualRealizedPL) : undefined,
         };
 
         onSave(transaction.id, updates);
@@ -59,7 +62,7 @@ export function TransactionEditDialog({ transaction, isOpen, onClose, onSave }: 
                     <DialogTitle className="flex items-center gap-2">
                         แก้ไขรายการ - {transaction.ticker}
                         <span className={`text-sm ${transaction.type === 'buy' ? 'text-green-500' :
-                                transaction.type === 'sell' ? 'text-red-500' : 'text-amber-500'
+                            transaction.type === 'sell' ? 'text-red-500' : 'text-amber-500'
                             }`}>
                             ({transaction.type === 'buy' ? 'ซื้อ' : transaction.type === 'sell' ? 'ขาย' : 'ปันผล'})
                         </span>
@@ -119,6 +122,30 @@ export function TransactionEditDialog({ transaction, isOpen, onClose, onSave }: 
                             onChange={(e) => setCommission(e.target.value)}
                         />
                     </div>
+
+                    {transaction.type === 'sell' && (
+                        <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-900 rounded-md border text-sm">
+                            <Label htmlFor="manualRealizedPL" className="flex items-center gap-2">
+                                กำไร/ขาดทุน (กำหนดเอง) <span className="text-xs text-muted-foreground font-normal">(เว้นว่างเพื่อใช้สูตร Auto FIFO)</span>
+                            </Label>
+                            <Input
+                                id="manualRealizedPL"
+                                type="number"
+                                step="any"
+                                placeholder="Auto"
+                                value={manualRealizedPL}
+                                onChange={(e) => setManualRealizedPL(e.target.value)}
+                                className={manualRealizedPL ? "border-amber-500 ring-amber-500/20" : ""}
+                            />
+                            {transaction.realizedPL !== undefined && !manualRealizedPL && (
+                                <p className="text-xs text-muted-foreground">
+                                    ค่าปัจจุบัน: <span className={transaction.realizedPL >= 0 ? "text-green-600" : "text-red-600"}>
+                                        {transaction.realizedPL.toLocaleString()}
+                                    </span>
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     <div className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
                         <p className="font-bold text-amber-700 dark:text-amber-300">⚠️ หมายเหตุ</p>

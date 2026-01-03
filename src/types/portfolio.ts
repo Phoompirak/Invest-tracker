@@ -21,6 +21,7 @@ export interface Transaction {
   withholdingTax?: number; // Tax withheld on dividends
   currency?: 'THB' | 'USD';
   exchangeRate?: number; // Historical exchange rate at time of transaction
+  manualRealizedPL?: number; // User-forced P/L value (overrides calculated one)
 }
 
 export interface Holding {
