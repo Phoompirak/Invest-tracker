@@ -69,36 +69,36 @@ export function DateRangeFilter({
     };
 
     return (
-        <div className="space-y-4">
-            {/* Quick Filters */}
-            <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={setThisYear}>
+        <div className="space-y-3 sm:space-y-4">
+            {/* Quick Filters - Horizontal scroll on mobile */}
+            <div className="flex overflow-x-auto gap-2 pb-1 sm:pb-0 sm:flex-wrap">
+                <Button variant="outline" size="sm" onClick={setThisYear} className="flex-shrink-0 text-xs sm:text-sm">
                     ปีนี้ ({currentYear})
                 </Button>
-                <Button variant="outline" size="sm" onClick={setLastYear}>
+                <Button variant="outline" size="sm" onClick={setLastYear} className="flex-shrink-0 text-xs sm:text-sm">
                     ปีที่แล้ว ({currentYear - 1})
                 </Button>
-                <Button variant="outline" size="sm" onClick={setLast12Months}>
-                    12 เดือนล่าสุด
+                <Button variant="outline" size="sm" onClick={setLast12Months} className="flex-shrink-0 text-xs sm:text-sm">
+                    12 เดือน
                 </Button>
                 {(startDate || endDate) && (
-                    <Button variant="ghost" size="sm" onClick={clearFilter} className="text-red-500">
-                        ล้างตัวกรอง
+                    <Button variant="ghost" size="sm" onClick={clearFilter} className="flex-shrink-0 text-red-500 text-xs sm:text-sm">
+                        ล้าง
                     </Button>
                 )}
             </div>
 
-            {/* Custom Range */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* Custom Range - Stack on small mobile */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {/* Start Date */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium flex items-center gap-1">
-                        <Calendar className="h-4 w-4" />
+                <div className="space-y-1 sm:space-y-2">
+                    <label className="text-xs sm:text-sm font-medium flex items-center gap-1">
+                        <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
                         เริ่มต้น
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1 sm:gap-2">
                         <select
-                            className="flex-1 h-9 rounded-md border bg-background px-3 text-sm"
+                            className="flex-1 h-8 sm:h-9 rounded-md border bg-background px-2 sm:px-3 text-xs sm:text-sm"
                             value={startDate?.getMonth() ?? ""}
                             onChange={(e) => {
                                 const month = parseInt(e.target.value);
@@ -112,7 +112,7 @@ export function DateRangeFilter({
                             ))}
                         </select>
                         <select
-                            className="w-24 h-9 rounded-md border bg-background px-3 text-sm"
+                            className="w-[72px] sm:w-24 h-8 sm:h-9 rounded-md border bg-background px-2 sm:px-3 text-xs sm:text-sm"
                             value={startDate?.getFullYear() ?? ""}
                             onChange={(e) => {
                                 const year = parseInt(e.target.value);
@@ -129,14 +129,14 @@ export function DateRangeFilter({
                 </div>
 
                 {/* End Date */}
-                <div className="space-y-2">
-                    <label className="text-sm font-medium flex items-center gap-1">
-                        <Calendar className="h-4 w-4" />
+                <div className="space-y-1 sm:space-y-2">
+                    <label className="text-xs sm:text-sm font-medium flex items-center gap-1">
+                        <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
                         สิ้นสุด
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1 sm:gap-2">
                         <select
-                            className="flex-1 h-9 rounded-md border bg-background px-3 text-sm"
+                            className="flex-1 h-8 sm:h-9 rounded-md border bg-background px-2 sm:px-3 text-xs sm:text-sm"
                             value={endDate?.getMonth() ?? ""}
                             onChange={(e) => {
                                 const month = parseInt(e.target.value);
@@ -150,7 +150,7 @@ export function DateRangeFilter({
                             ))}
                         </select>
                         <select
-                            className="w-24 h-9 rounded-md border bg-background px-3 text-sm"
+                            className="w-[72px] sm:w-24 h-8 sm:h-9 rounded-md border bg-background px-2 sm:px-3 text-xs sm:text-sm"
                             value={endDate?.getFullYear() ?? ""}
                             onChange={(e) => {
                                 const year = parseInt(e.target.value);
@@ -169,7 +169,7 @@ export function DateRangeFilter({
 
             {/* Selected Range Display */}
             {(startDate || endDate) && (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs sm:text-sm text-muted-foreground">
                     กำลังดู: {startDate ? startDate.toLocaleDateString('th-TH', { month: 'short', year: 'numeric' }) : 'ตั้งแต่แรก'}
                     {' → '}
                     {endDate ? endDate.toLocaleDateString('th-TH', { month: 'short', year: 'numeric' }) : 'ปัจจุบัน'}

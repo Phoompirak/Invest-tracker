@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Holding } from '@/types/portfolio';
 
 interface AllocationChartProps {
@@ -32,8 +32,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export function AllocationChart({ holdings, currency = 'THB', exchangeRate = 34.5 }: AllocationChartProps) {
-    const { assetData, categoryData, totalValue } = useMemo(() => {
-        // Asset-level data
+    const { assetData, totalValue } = useMemo(() => {
         const assetData = holdings
             .map((holding, index) => {
                 let value = holding.marketValue;
@@ -50,29 +49,8 @@ export function AllocationChart({ holdings, currency = 'THB', exchangeRate = 34.
             .filter(item => item.value > 0)
             .sort((a, b) => b.value - a.value);
 
-        // Category-level data
-        const categoryMap: Record<string, number> = {};
-        holdings.forEach(holding => {
-            let value = holding.marketValue;
-            if (currency === 'USD') {
-                value = value / exchangeRate;
-            }
-            const cat = holding.category || 'unknown';
-            categoryMap[cat] = (categoryMap[cat] || 0) + value;
-        });
-
-        const categoryData = Object.entries(categoryMap)
-            .map(([name, value]) => ({
-                name,
-                value,
-                label: CATEGORY_LABELS[name] || name,
-            }))
-            .filter(item => item.value > 0)
-            .sort((a, b) => b.value - a.value);
-
         const totalValue = assetData.reduce((sum, item) => sum + item.value, 0);
-
-        return { assetData, categoryData, totalValue };
+        return { assetData, totalValue };
     }, [holdings, currency, exchangeRate]);
 
     const currencySymbol = currency === 'USD' ? '$' : '฿';
@@ -113,7 +91,7 @@ export function AllocationChart({ holdings, currency = 'THB', exchangeRate = 34.
                             </Pie>
                             <Tooltip
                                 formatter={(value: number, name: string) => [
-                                    `${currencySymbol}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${((value / totalValue) * 100).toFixed(1)}%)`,
+                                    `${formatValue(value)} (${((value / totalValue) * 100).toFixed(1)}%)`,
                                     name
                                 ]}
                                 contentStyle={{
@@ -125,24 +103,17 @@ export function AllocationChart({ holdings, currency = 'THB', exchangeRate = 34.
                             />
                         </PieChart>
                     </ResponsiveContainer>
-
-                    {/* Center Label */}
                     <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
                         <p className="text-[10px] text-muted-foreground uppercase">มูลค่ารวม</p>
                         <p className="text-lg font-bold font-mono">{formatValue(totalValue)}</p>
                     </div>
                 </div>
-
-                {/* Legend - Asset breakdown */}
                 <div className="mt-4 space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar">
                     <p className="text-xs font-bold text-muted-foreground uppercase mb-2">รายการสินทรัพย์</p>
                     <div className="grid grid-cols-2 gap-2">
-                        {assetData.slice(0, 10).map((item, index) => (
+                        {assetData.slice(0, 10).map((item) => (
                             <div key={item.name} className="flex items-center gap-2 text-sm">
-                                <div
-                                    className="w-3 h-3 rounded-full flex-shrink-0"
-                                    style={{ backgroundColor: item.color }}
-                                />
+                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
                                 <span className="font-bold uppercase truncate">{item.name}</span>
                                 <span className="text-muted-foreground ml-auto text-xs">
                                     {((item.value / totalValue) * 100).toFixed(1)}%
@@ -155,21 +126,6 @@ export function AllocationChart({ holdings, currency = 'THB', exchangeRate = 34.
                             +{assetData.length - 10} รายการอื่นๆ
                         </p>
                     )}
-                </div>
-
-                {/* Category Summary */}
-                <div className="mt-4 pt-4 border-t border-border">
-                    <p className="text-xs font-bold text-muted-foreground uppercase mb-2">สรุปตามหมวดหมู่</p>
-                    <div className="flex flex-wrap gap-3">
-                        {categoryData.map(cat => (
-                            <div key={cat.name} className="bg-secondary/50 px-3 py-1.5 rounded-full">
-                                <span className="text-xs font-bold">{cat.label}:</span>
-                                <span className="text-xs font-mono ml-1">
-                                    {formatValue(cat.value)} ({((cat.value / totalValue) * 100).toFixed(0)}%)
-                                </span>
-                            </div>
-                        ))}
-                    </div>
                 </div>
             </CardContent>
         </Card>

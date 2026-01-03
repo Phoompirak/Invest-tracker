@@ -140,7 +140,12 @@ const Index = () => {
             <div className="px-4 py-6 pb-24">
               <h1 className="text-xl font-bold mb-6">วิเคราะห์พอร์ต</h1>
               <Suspense fallback={<LazyFallback />}>
-                <PortfolioCharts holdings={holdings} transactions={transactions} />
+                <PortfolioCharts
+                  holdings={holdings}
+                  transactions={transactions}
+                  currency={currency}
+                  exchangeRate={exchangeRate}
+                />
               </Suspense>
             </div>
           )}

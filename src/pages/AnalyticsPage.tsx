@@ -32,26 +32,32 @@ export default function AnalyticsPage() {
 
     // Calculate summary for filtered transactions
     const filteredSummary = useMemo(() => {
+        // Helper to convert value based on display currency
+        const getRate = (txCurrency: string) => {
+            if (txCurrency === 'USD' && currency === 'THB') return exchangeRate;
+            if (txCurrency === 'THB' && currency === 'USD') return 1 / exchangeRate;
+            return 1;
+        };
+
         const realizedPL = filteredTransactions
             .filter(t => t.type === 'sell' && t.realizedPL !== undefined)
             .reduce((sum, t) => {
-                const rate = t.currency === 'USD' ? exchangeRate : 1;
-                return sum + (t.realizedPL || 0) * rate;
+                return sum + (t.realizedPL || 0) * getRate(t.currency);
             }, 0);
 
         const dividends = filteredTransactions
             .filter(t => t.type === 'dividend')
             .reduce((sum, t) => {
-                const rate = t.currency === 'USD' ? exchangeRate : 1;
-                return sum + (t.totalValue - (t.withholdingTax || 0)) * rate;
+                const net = t.totalValue - (t.withholdingTax || 0);
+                return sum + net * getRate(t.currency);
             }, 0);
 
         return { realizedPL, dividends, total: realizedPL + dividends };
-    }, [filteredTransactions, exchangeRate]);
+    }, [filteredTransactions, exchangeRate, currency]);
 
     // Calculate default growth rate from last profitable year
     const defaultGrowthRate = useMemo(() => {
-        // Group by year and calculate P/L
+        // Group by year and calculate P/L (normalized to THB for stability)
         const yearlyPL = new Map<number, number>();
         transactions.forEach(t => {
             if (t.type === 'sell' && t.realizedPL !== undefined) {
@@ -74,37 +80,48 @@ export default function AnalyticsPage() {
         return 10; // Default 10% if no profitable year
     }, [transactions, exchangeRate, summary.totalInvested]);
 
+    // Current portfolio value in selected currency
+    const portfolioValue = useMemo(() => {
+        const total = summary.totalValue || summary.totalInvested;
+        return currency === 'USD' ? total / exchangeRate : total;
+    }, [summary, currency, exchangeRate]);
+
+    const currencySymbol = currency === 'USD' ? '$' : '฿';
+    const formatNumber = (n: number) => n.toLocaleString(undefined, {
+        maximumFractionDigits: currency === 'USD' ? 2 : 0
+    });
+
     return (
         <div className="min-h-screen bg-background">
             <Navbar currency={currency} setCurrency={setCurrency} />
 
-            <main className="container mx-auto px-4 py-6 space-y-6">
+            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6 pt-16 sm:pt-20">
                 {/* Header */}
                 <div className="flex items-center gap-3">
                     <button
                         onClick={() => navigate(-1)}
-                        className="p-2 rounded-full hover:bg-muted transition"
+                        className="p-2 rounded-full hover:bg-muted transition-colors active:scale-95"
                     >
-                        <ArrowLeft className="h-5 w-5" />
+                        <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
                     </button>
                     <div>
-                        <h1 className="text-2xl font-bold flex items-center gap-2">
-                            <BarChart3 className="h-6 w-6 text-primary" />
+                        <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+                            <BarChart3 className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
                             วิเคราะห์การลงทุน
                         </h1>
-                        <p className="text-muted-foreground text-sm">สรุปผลตอบแทนและพยากรณ์การเติบโต</p>
+                        <p className="text-muted-foreground text-xs sm:text-sm hidden sm:block">สรุปผลตอบแทนและพยากรณ์การเติบโต</p>
                     </div>
                 </div>
 
                 {/* Date Range Filter Section */}
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                            <Calendar className="h-5 w-5" />
+                <Card className="shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <CardHeader className="pb-2 sm:pb-3 px-4 sm:px-6">
+                        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                            <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
                             กรองตามช่วงเวลา
                         </CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="px-4 sm:px-6">
                         <DateRangeFilter
                             startDate={startDate}
                             endDate={endDate}
@@ -114,23 +131,23 @@ export default function AnalyticsPage() {
 
                         {/* Filtered Summary */}
                         {(startDate || endDate) && (
-                            <div className="mt-4 grid grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
+                            <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-4 p-3 sm:p-4 bg-muted/50 rounded-lg">
                                 <div className="text-center">
-                                    <p className="text-xs text-muted-foreground">กำไรจากการขาย</p>
-                                    <p className={`text-lg font-bold ${filteredSummary.realizedPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        ฿{filteredSummary.realizedPL.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                    <p className="text-[10px] sm:text-xs text-muted-foreground">กำไรขาย</p>
+                                    <p className={`text-sm sm:text-lg font-bold ${filteredSummary.realizedPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {currencySymbol}{formatNumber(filteredSummary.realizedPL)}
                                     </p>
                                 </div>
                                 <div className="text-center">
-                                    <p className="text-xs text-muted-foreground">เงินปันผล</p>
-                                    <p className="text-lg font-bold text-amber-600">
-                                        ฿{filteredSummary.dividends.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                    <p className="text-[10px] sm:text-xs text-muted-foreground">ปันผล</p>
+                                    <p className="text-sm sm:text-lg font-bold text-amber-600">
+                                        {currencySymbol}{formatNumber(filteredSummary.dividends)}
                                     </p>
                                 </div>
                                 <div className="text-center">
-                                    <p className="text-xs text-muted-foreground">รวม</p>
-                                    <p className={`text-lg font-bold ${filteredSummary.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        ฿{filteredSummary.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                    <p className="text-[10px] sm:text-xs text-muted-foreground">รวม</p>
+                                    <p className={`text-sm sm:text-lg font-bold ${filteredSummary.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {currencySymbol}{formatNumber(filteredSummary.total)}
                                     </p>
                                 </div>
                             </div>
@@ -138,34 +155,42 @@ export default function AnalyticsPage() {
                     </CardContent>
                 </Card>
 
-                {/* Yearly Summary */}
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                            <BarChart3 className="h-5 w-5" />
-                            สรุปผลตอบแทนรายปี
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <YearlySummary transactions={transactions} exchangeRate={exchangeRate} />
-                    </CardContent>
-                </Card>
+                {/* Two-column layout on desktop */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                    {/* Yearly Summary */}
+                    <Card className="shadow-sm hover:shadow-md transition-shadow duration-200">
+                        <CardHeader className="pb-2 sm:pb-3 px-4 sm:px-6">
+                            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                                <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" />
+                                สรุปผลตอบแทนรายปี
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-4 sm:px-6">
+                            <YearlySummary
+                                transactions={transactions}
+                                exchangeRate={exchangeRate}
+                                currency={currency}
+                            />
+                        </CardContent>
+                    </Card>
 
-                {/* Growth Projection */}
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                            <TrendingUp className="h-5 w-5" />
-                            พยากรณ์การเติบโต (Compound Growth)
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <GrowthProjection
-                            initialValue={summary.totalValue || summary.totalInvested}
-                            defaultRate={defaultGrowthRate}
-                        />
-                    </CardContent>
-                </Card>
+                    {/* Growth Projection */}
+                    <Card className="shadow-sm hover:shadow-md transition-shadow duration-200">
+                        <CardHeader className="pb-2 sm:pb-3 px-4 sm:px-6">
+                            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                                <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
+                                <span className="truncate">พยากรณ์การเติบโต</span>
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-4 sm:px-6">
+                            <GrowthProjection
+                                initialValue={portfolioValue}
+                                defaultRate={defaultGrowthRate}
+                                currency={currency}
+                            />
+                        </CardContent>
+                    </Card>
+                </div>
             </main>
         </div>
     );

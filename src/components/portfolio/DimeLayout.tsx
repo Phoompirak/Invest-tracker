@@ -158,119 +158,127 @@ export function DimeLayout({
         </div>
       </header>
 
-      <div className="px-4 mb-4 pt-4">
-        <div className="space-y-4">
-          {/* Main Realized P/L Summary Card */}
-          <Card className="bg-gradient-to-br from-emerald-600 via-emerald-500 to-green-400 text-white p-6 relative overflow-hidden border-0 shadow-lg">
-            {/* Decorative elements */}
-            <div className="absolute top-2 right-2 opacity-20">
-              <div className="w-16 h-16 bg-white/20 rounded-lg transform rotate-12" />
-              <div className="w-8 h-8 bg-white/30 rounded-full absolute -top-2 -right-4" />
-            </div>
+      <div className="px-4 sm:px-6 lg:px-8 mb-4 pt-4">
+        {/* Responsive Grid: Stack on mobile, side-by-side on desktop */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
 
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-white/80">กำไรขายแล้ว + ปันผล</span>
-              <div className="flex items-center gap-2 text-xs text-white/60">
-                <span>{new Date().toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })}</span>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-bold font-mono">
-                  {showValue ? formatCurrency(summary.totalRealizedPL + summary.totalDividends) : "••••••"}
-                </span>
+          {/* Left Column - Summary Cards */}
+          <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+            {/* Main Realized P/L Summary Card */}
+            <Card className="bg-gradient-to-br from-emerald-600 via-emerald-500 to-green-400 text-white p-4 sm:p-6 relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+              {/* Decorative elements */}
+              <div className="absolute top-2 right-2 opacity-20">
+                <div className="w-12 sm:w-16 h-12 sm:h-16 bg-white/20 rounded-lg transform rotate-12" />
+                <div className="w-6 sm:w-8 h-6 sm:h-8 bg-white/30 rounded-full absolute -top-2 -right-4" />
               </div>
 
-              {(summary.totalRealizedPL + summary.totalDividends) !== 0 && (
-                <div className="flex items-center gap-2 mt-2">
-                  {(summary.totalRealizedPL + summary.totalDividends) >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                  <span className="text-sm font-medium">
-                    กำไรจริงที่ได้รับ
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs sm:text-sm text-white/80">กำไรขายแล้ว + ปันผล</span>
+                <div className="flex items-center gap-2 text-xs text-white/60">
+                  <span>{new Date().toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl sm:text-3xl lg:text-4xl font-bold font-mono tracking-tight">
+                    {showValue ? formatCurrency(summary.totalRealizedPL + summary.totalDividends) : "••••••"}
                   </span>
                 </div>
-              )}
-            </div>
-          </Card>
 
-          {/* Analytics Link Button */}
-          <Button
-            variant="outline"
-            className="w-full flex items-center justify-between py-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-blue-200 dark:border-blue-800 hover:from-blue-100 hover:to-indigo-100"
-            onClick={() => navigate('/analytics')}
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500 rounded-lg">
-                <BarChart3 className="h-5 w-5 text-white" />
-              </div>
-              <div className="text-left">
-                <p className="font-semibold">วิเคราะห์การลงทุน</p>
-                <p className="text-xs text-muted-foreground">สรุปรายปี • พยากรณ์การเติบโต</p>
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </Button>
-
-          {/* Dividend Summary Card */}
-          {summary.totalDividends > 0 && (
-            <Card className="bg-gradient-to-br from-amber-500 via-amber-400 to-yellow-400 text-white p-4 relative overflow-hidden border-0 shadow-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Banknote className="h-5 w-5" />
-                  <span className="text-sm font-medium">เงินปันผลสะสม</span>
-                </div>
-                <span className="text-xl font-bold font-mono">
-                  {showValue ? formatCurrency(summary.totalDividends) : "••••••"}
-                </span>
+                {(summary.totalRealizedPL + summary.totalDividends) !== 0 && (
+                  <div className="flex items-center gap-2 mt-2">
+                    {(summary.totalRealizedPL + summary.totalDividends) >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                    <span className="text-xs sm:text-sm font-medium">
+                      กำไรจริงที่ได้รับ
+                    </span>
+                  </div>
+                )}
               </div>
             </Card>
-          )}
 
-          {/* Detailed Performance Breakdown */}
-          <Card className="p-4 border-2 border-primary/20 bg-card shadow-md">
-            <h3 className="font-bold text-sm text-muted-foreground uppercase mb-4 flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" /> ภาพรวมผลตอบแทน (Performance)
-            </h3>
-
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <p className="text-xs text-muted-foreground">ต้นทุนรวม (Invested)</p>
-                <p className="font-mono font-bold text-lg">{showValue ? formatCurrency(summary.totalInvested) : "••••••"}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">หุ้นถืออยู่</p>
-                <p className="font-mono font-bold text-lg">{holdings.filter(h => !h.isClosed).length} ตัว</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-4 border-t border-border">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">กำไรขายแล้ว (Realized)</span>
-                <span className={`font-mono font-bold ${summary.totalRealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  {summary.totalRealizedPL >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalRealizedPL) : "••••••"}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">เงินปันผล (Dividends)</span>
-                <span className="font-mono font-bold text-green-500">
-                  +{showValue ? formatCurrency(summary.totalDividends) : "••••••"}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center pt-3 border-t border-border mt-2">
-                <span className="font-bold">กำไรสุทธิจริง (Net Realized)</span>
-                <div className="text-right">
-                  <span className={`block font-mono font-black text-xl ${(summary.totalRealizedPL + summary.totalDividends) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {(summary.totalRealizedPL + summary.totalDividends) >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalRealizedPL + summary.totalDividends) : "••••••"}
-                  </span>
+            {/* Analytics Link Button */}
+            <Button
+              variant="outline"
+              className="w-full flex items-center justify-between py-4 sm:py-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-blue-200 dark:border-blue-800 hover:from-blue-100 hover:to-indigo-100 hover:scale-[1.01] active:scale-[0.99] transition-all duration-200"
+              onClick={() => navigate('/analytics')}
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 sm:p-2 bg-blue-500 rounded-lg">
+                  <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                </div>
+                <div className="text-left">
+                  <p className="font-semibold text-sm sm:text-base">วิเคราะห์การลงทุน</p>
+                  <p className="text-xs text-muted-foreground hidden sm:block">สรุปรายปี • พยากรณ์การเติบโต</p>
                 </div>
               </div>
-            </div>
-          </Card>
+              <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
+            </Button>
+
+            {/* Dividend Summary Card */}
+            {summary.totalDividends > 0 && (
+              <Card className="bg-gradient-to-br from-amber-500 via-amber-400 to-yellow-400 text-white p-3 sm:p-4 relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Banknote className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <span className="text-xs sm:text-sm font-medium">เงินปันผลสะสม</span>
+                  </div>
+                  <span className="text-lg sm:text-xl font-bold font-mono">
+                    {showValue ? formatCurrency(summary.totalDividends) : "••••••"}
+                  </span>
+                </div>
+              </Card>
+            )}
+
+            {/* Detailed Performance Breakdown - Hidden on Mobile, Show Summary */}
+            <Card className="p-3 sm:p-4 border-2 border-primary/20 bg-card shadow-md">
+              <h3 className="font-bold text-xs sm:text-sm text-muted-foreground uppercase mb-3 sm:mb-4 flex items-center gap-2">
+                <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" /> ภาพรวมผลตอบแทน
+              </h3>
+
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
+                <div>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground">ต้นทุนรวม</p>
+                  <p className="font-mono font-bold text-base sm:text-lg">{showValue ? formatCurrency(summary.totalInvested) : "••••••"}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] sm:text-xs text-muted-foreground">หุ้นถืออยู่</p>
+                  <p className="font-mono font-bold text-base sm:text-lg">{holdings.filter(h => !h.isClosed).length} ตัว</p>
+                </div>
+              </div>
+
+              <div className="space-y-2 sm:space-y-3 pt-3 sm:pt-4 border-t border-border">
+                <div className="flex justify-between text-xs sm:text-sm">
+                  <span className="text-muted-foreground">กำไรขายแล้ว</span>
+                  <span className={`font-mono font-bold ${summary.totalRealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {summary.totalRealizedPL >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalRealizedPL) : "••••••"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs sm:text-sm">
+                  <span className="text-muted-foreground">เงินปันผล</span>
+                  <span className="font-mono font-bold text-green-500">
+                    +{showValue ? formatCurrency(summary.totalDividends) : "••••••"}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center pt-2 sm:pt-3 border-t border-border mt-2">
+                  <span className="font-bold text-xs sm:text-sm">กำไรสุทธิจริง</span>
+                  <div className="text-right">
+                    <span className={`block font-mono font-black text-lg sm:text-xl ${(summary.totalRealizedPL + summary.totalDividends) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {(summary.totalRealizedPL + summary.totalDividends) >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalRealizedPL + summary.totalDividends) : "••••••"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Right Column - Allocation Chart */}
+          <div className="lg:col-span-5 xl:col-span-4">
+            <AllocationChart holdings={holdings} currency={currency} exchangeRate={exchangeRate} />
+          </div>
         </div>
 
-        {/* Allocation Chart */}
-        <AllocationChart holdings={holdings} currency={currency} exchangeRate={exchangeRate} />
 
         {/* Asset List */}
         <div>
