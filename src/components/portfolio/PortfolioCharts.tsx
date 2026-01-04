@@ -224,21 +224,31 @@ export function PortfolioCharts({
       .filter(h => !h.isClosed)
       .map(h => ({
         ticker: h.ticker,
-        realizedPL: convertValue(h.totalRealizedPL || 0),
+        realizedPL: convertValue(h.realizedPL || 0),
         unrealizedPL: convertValue(h.unrealizedPL || 0),
-        totalPL: convertValue((h.totalRealizedPL || 0) + (h.unrealizedPL || 0)),
+        totalPL: convertValue((h.realizedPL || 0) + (h.unrealizedPL || 0)),
       }))
       .sort((a, b) => b.totalPL - a.totalPL);
   }, [holdings, currency, exchangeRate]);
 
   // 4. Realized vs Unrealized
   const realizedVsUnrealized = useMemo(() => {
-    const realized = holdings.reduce((sum, h) => sum + (h.totalRealizedPL || 0), 0);
+    const totalInvested = holdings.reduce((sum, h) => sum + h.totalInvested, 0);
+    const realized = holdings.reduce((sum, h) => sum + (h.realizedPL || 0), 0);
     const unrealized = holdings.reduce((sum, h) => sum + (h.unrealizedPL || 0), 0);
+    const total = realized + unrealized;
+    // Calculate percentages (based on total invested)
+    const realizedPct = totalInvested > 0 ? (realized / totalInvested) * 100 : 0;
+    const unrealizedPct = totalInvested > 0 ? (unrealized / totalInvested) * 100 : 0;
+    const totalPct = totalInvested > 0 ? (total / totalInvested) * 100 : 0;
     return {
       realized: convertValue(realized),
       unrealized: convertValue(unrealized),
-      total: convertValue(realized + unrealized),
+      total: convertValue(total),
+      realizedPct,
+      unrealizedPct,
+      totalPct,
+      totalInvested: convertValue(totalInvested),
     };
   }, [holdings, currency, exchangeRate]);
 
@@ -434,19 +444,28 @@ export function PortfolioCharts({
                 <p className={`text-lg sm:text-xl font-bold ${realizedVsUnrealized.realized >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {realizedVsUnrealized.realized >= 0 ? '+' : ''}{formatCurrency(realizedVsUnrealized.realized * (currency === 'USD' ? exchangeRate : 1))}
                 </p>
-                <p className="text-[10px] text-muted-foreground">เข้ากระเป๋าแล้ว</p>
+                <p className={`text-xs font-medium ${realizedVsUnrealized.realizedPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {realizedVsUnrealized.realizedPct >= 0 ? '+' : ''}{realizedVsUnrealized.realizedPct.toFixed(2)}%
+                </p>
               </div>
               <div className="p-3 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-200 dark:border-blue-800">
                 <p className="text-xs text-muted-foreground">Unrealized (ทิพย์)</p>
                 <p className={`text-lg sm:text-xl font-bold ${realizedVsUnrealized.unrealized >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
                   {realizedVsUnrealized.unrealized >= 0 ? '+' : ''}{formatCurrency(realizedVsUnrealized.unrealized * (currency === 'USD' ? exchangeRate : 1))}
                 </p>
-                <p className="text-[10px] text-muted-foreground">ยังอยู่ในหุ้น</p>
+                <p className={`text-xs font-medium ${realizedVsUnrealized.unrealizedPct >= 0 ? 'text-blue-500' : 'text-red-500'}`}>
+                  {realizedVsUnrealized.unrealizedPct >= 0 ? '+' : ''}{realizedVsUnrealized.unrealizedPct.toFixed(2)}%
+                </p>
               </div>
             </div>
             <div className="p-3 rounded-lg bg-muted/50 border">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">Total P/L</span>
+                <div>
+                  <span className="text-sm font-medium">Total P/L</span>
+                  <span className={`ml-2 text-xs font-medium ${realizedVsUnrealized.totalPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    ({realizedVsUnrealized.totalPct >= 0 ? '+' : ''}{realizedVsUnrealized.totalPct.toFixed(2)}%)
+                  </span>
+                </div>
                 <span className={`text-xl font-bold ${realizedVsUnrealized.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {realizedVsUnrealized.total >= 0 ? '+' : ''}{formatCurrency(realizedVsUnrealized.total * (currency === 'USD' ? exchangeRate : 1))}
                 </span>
