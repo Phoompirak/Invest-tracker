@@ -285,8 +285,104 @@ export function PortfolioCharts({
 
   const totalDividends = monthlyDividendData.reduce((sum, d) => sum + d.dividend, 0);
 
+  // 7. Yearly P/L Data (กำไรขาดทุนแต่ละปี)
+  const yearlyPLData = useMemo(() => {
+    const yearlyMap = new Map<number, { realized: number; dividends: number }>();
+
+    transactions.forEach(t => {
+      const year = new Date(t.timestamp).getFullYear();
+      if (!yearlyMap.has(year)) {
+        yearlyMap.set(year, { realized: 0, dividends: 0 });
+      }
+      const data = yearlyMap.get(year)!;
+
+      // Convert to display currency
+      const rate = t.currency === 'USD' ? (t.exchangeRate || exchangeRate) : 1;
+
+      if (t.type === 'sell' && t.realizedPL !== undefined) {
+        data.realized += (t.realizedPL || 0) * rate;
+      } else if (t.type === 'dividend') {
+        const netDividend = t.totalValue - (t.withholdingTax || 0);
+        data.dividends += netDividend * rate;
+      }
+    });
+
+    // Sort by year and convert to array
+    const sortedYears = Array.from(yearlyMap.keys()).sort();
+    return sortedYears.map(year => {
+      const data = yearlyMap.get(year)!;
+      const total = data.realized + data.dividends;
+      return {
+        year: year.toString(),
+        realized: convertValue(data.realized),
+        dividends: convertValue(data.dividends),
+        total: convertValue(total),
+      };
+    });
+  }, [transactions, currency, exchangeRate]);
+
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Row 0: Yearly P/L Bar Chart */}
+      {yearlyPLData.length > 0 && (
+        <Card className="shadow-sm hover:shadow-md transition-shadow duration-200">
+          <CardHeader className="pb-2 px-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              📊 Yearly P/L
+            </CardTitle>
+            <p className="text-xs sm:text-sm text-muted-foreground">กำไร/ขาดทุนแต่ละปี (Realized + Dividends)</p>
+          </CardHeader>
+          <CardContent className="px-2 sm:px-6">
+            <div className="h-[200px] sm:h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={yearlyPLData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                  <YAxis
+                    tickFormatter={(v) => formatCurrency(v)}
+                    tick={{ fontSize: 10 }}
+                    width={55}
+                  />
+                  <Tooltip
+                    formatter={(value: number, name: string) => {
+                      const label = name === 'realized' ? 'Realized P/L'
+                        : name === 'dividends' ? 'Dividends'
+                          : 'Total';
+                      return [`${currencySymbol}${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, label];
+                    }}
+                    contentStyle={{ fontSize: 12 }}
+                  />
+                  <Legend
+                    formatter={(value) => value === 'realized' ? 'กำไรจริง' : value === 'dividends' ? 'ปันผล' : 'รวม'}
+                    wrapperStyle={{ fontSize: 11 }}
+                  />
+                  <Bar dataKey="realized" stackId="a" fill={COLORS.success} radius={[0, 0, 0, 0]} name="realized">
+                    {yearlyPLData.map((entry, index) => (
+                      <Cell
+                        key={`cell-realized-${index}`}
+                        fill={entry.realized >= 0 ? COLORS.success : COLORS.danger}
+                      />
+                    ))}
+                  </Bar>
+                  <Bar dataKey="dividends" stackId="a" fill={COLORS.warning} radius={[4, 4, 0, 0]} name="dividends" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {/* Summary Row */}
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              {yearlyPLData.slice(-3).map((item) => (
+                <div key={item.year} className="p-2 rounded-lg bg-muted/30">
+                  <p className="text-xs text-muted-foreground">{item.year}</p>
+                  <p className={`text-sm font-bold ${item.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {item.total >= 0 ? '+' : ''}{currencySymbol}{item.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Row 1: Portfolio Growth (Mobile-First) */}
       <Card className="shadow-sm hover:shadow-md transition-shadow duration-200">
         <CardHeader className="pb-2 px-4 sm:px-6">

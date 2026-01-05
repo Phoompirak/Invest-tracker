@@ -282,7 +282,7 @@ export function DimeLayout({
 
         {/* Asset List */}
         <div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 mt-6">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-foreground">สินทรัพย์ในพอร์ต</h2>
               <Popover>
