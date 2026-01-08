@@ -14,7 +14,10 @@ import {
   BarChart3,
   Banknote,
   Trash2,
-  Info
+  Info,
+  PieChart,
+  Coins,
+  Briefcase
 } from "lucide-react";
 import { Holding, PortfolioSummary, Transaction } from "@/types/portfolio";
 import { Badge } from "@/components/ui/badge";
@@ -88,7 +91,36 @@ export function DimeLayout({
     return icons[category] || Wallet;
   };
 
-  // Group holdings by category
+  // Asset Type Filtering
+  const [activeFilter, setActiveFilter] = useState<'ALL' | 'ACTIVE' | 'STOCK' | 'ETF' | 'GOLD'>('ALL');
+
+  const filteredHoldings = useMemo(() => {
+    if (activeFilter === 'ALL') return holdings;
+
+    return holdings.filter(h => {
+      // Logic for Active Holdings (Only currently held assets)
+      if (activeFilter === 'ACTIVE') {
+        return !h.isClosed;
+      }
+
+      const ticker = h.ticker.toUpperCase();
+      if (activeFilter === 'GOLD') {
+        return ticker.includes('GOLD') || ticker === 'GC=F';
+      }
+      if (activeFilter === 'ETF') {
+        // Simple heuristic + common ETFs
+        return ticker.includes('ETF') ||
+          ['VOO', 'QQQ', 'SPY', 'VTI', 'SCHD', 'JEPI'].some(etf => ticker.includes(etf));
+      }
+      if (activeFilter === 'STOCK') {
+        // Stocks are everything that is NOT Gold or explicit ETF (rough approximation)
+        return !ticker.includes('GOLD') && ticker !== 'GC=F';
+      }
+      return true;
+    });
+  }, [holdings, activeFilter]);
+
+  // Group holdings by category (using filtered holdings)
   const holdingsByCategory = useMemo(() => {
     const defaultCategoriesList = ['securities', 'long-term', 'speculation'];
     // All unique categories we know about
@@ -102,7 +134,7 @@ export function DimeLayout({
     });
 
     // Add holdings to their respective groups
-    holdings.forEach(holding => {
+    filteredHoldings.forEach(holding => {
       if (!grouped[holding.category]) {
         grouped[holding.category] = [];
       }
@@ -110,7 +142,7 @@ export function DimeLayout({
     });
 
     return grouped;
-  }, [holdings, customCategories]);
+  }, [filteredHoldings, customCategories]);
 
   // Calculate category totals
   const getCategoryTotal = (category: string) => {
@@ -142,7 +174,7 @@ export function DimeLayout({
         {/* Total Value Banner */}
         <div className="flex items-center justify-between mt-2 py-2 px-3 bg-primary/10 rounded-lg">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">มูลค่าสินทรัพย์ทั้งหมด</span>
+            <span className="text-sm text-muted-foreground">มูลค่าสินทรัพย์{activeFilter !== 'ALL' ? ` (${activeFilter})` : 'ทั้งหมด'}</span>
             <Button
               variant="ghost"
               size="icon"
@@ -153,7 +185,11 @@ export function DimeLayout({
             </Button>
           </div>
           <span className="font-bold text-lg font-mono">
-            {showValue ? formatCurrency(summary.totalValue) : "••••••"}
+            {showValue ? formatCurrency(
+              activeFilter === 'ALL'
+                ? summary.totalValue
+                : filteredHoldings.reduce((sum, h) => sum + h.marketValue, 0)
+            ) : "••••••"}
           </span>
         </div>
       </header>
@@ -164,7 +200,8 @@ export function DimeLayout({
 
           {/* Left Column - Summary Cards */}
           <div className="lg:col-span-7 xl:col-span-8 space-y-4">
-            {/* Main Realized P/L Summary Card */}
+            {/* Main Realized P/L Summary Card - Only show on ALL or if data agrees (skipped for specific filters to avoid confusion for now, or keep it?) */}
+            {/* Let's keep it but maybe it should reflect filtered data? For now, keep GLOBAL summary as it comes from props.summary which is pre-calculated. */}
             <Card className="bg-gradient-to-br from-emerald-600 via-emerald-500 to-green-400 text-white p-4 sm:p-6 relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
               {/* Decorative elements */}
               <div className="absolute top-2 right-2 opacity-20">
@@ -173,7 +210,7 @@ export function DimeLayout({
               </div>
 
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs sm:text-sm text-white/80">กำไรขายแล้ว + ปันผล</span>
+                <span className="text-xs sm:text-sm text-white/80">กำไรขายแล้ว + ปันผล (รวม)</span>
                 <div className="flex items-center gap-2 text-xs text-white/60">
                   <span>{new Date().toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })}</span>
                 </div>
@@ -230,52 +267,67 @@ export function DimeLayout({
               </Card>
             )}
 
-            {/* Detailed Performance Breakdown - Hidden on Mobile, Show Summary */}
+            {/* Detailed Performance Breakdown */}
             <Card className="p-3 sm:p-4 border-2 border-primary/20 bg-card shadow-md">
               <h3 className="font-bold text-xs sm:text-sm text-muted-foreground uppercase mb-3 sm:mb-4 flex items-center gap-2">
-                <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" /> ภาพรวมผลตอบแทน
+                <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" /> ภาพรวมผลตอบแทน {activeFilter !== 'ALL' && `(${activeFilter})`}
               </h3>
 
               <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
                 <div>
                   <p className="text-[10px] sm:text-xs text-muted-foreground">ต้นทุนรวม</p>
-                  <p className="font-mono font-bold text-base sm:text-lg">{showValue ? formatCurrency(summary.totalInvested) : "••••••"}</p>
+                  <p className="font-mono font-bold text-base sm:text-lg">
+                    {showValue ? formatCurrency(
+                      activeFilter === 'ALL'
+                        ? summary.totalInvested
+                        : filteredHoldings.reduce((sum, h) => sum + h.totalInvested, 0)
+                    ) : "••••••"}
+                  </p>
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] sm:text-xs text-muted-foreground">หุ้นถืออยู่</p>
-                  <p className="font-mono font-bold text-base sm:text-lg">{holdings.filter(h => !h.isClosed).length} ตัว</p>
+                  <p className="font-mono font-bold text-base sm:text-lg">{filteredHoldings.filter(h => !h.isClosed).length} ตัว</p>
                 </div>
               </div>
 
               <div className="space-y-2 sm:space-y-3 pt-3 sm:pt-4 border-t border-border">
-                <div className="flex justify-between text-xs sm:text-sm">
-                  <span className="text-muted-foreground">กำไรขายแล้ว</span>
-                  <span className={`font-mono font-bold ${summary.totalRealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {summary.totalRealizedPL >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalRealizedPL) : "••••••"}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs sm:text-sm">
-                  <span className="text-muted-foreground">เงินปันผล</span>
-                  <span className="font-mono font-bold text-green-500">
-                    +{showValue ? formatCurrency(summary.totalDividends) : "••••••"}
-                  </span>
-                </div>
+                {/* Only show global realized/dividends as they are hard to filter per asset without transaction history filtering logic which is complex here */}
+                {activeFilter === 'ALL' ? (
+                  <>
+                    <div className="flex justify-between text-xs sm:text-sm">
+                      <span className="text-muted-foreground">กำไรขายแล้ว</span>
+                      <span className={`font-mono font-bold ${summary.totalRealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {summary.totalRealizedPL >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalRealizedPL) : "••••••"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs sm:text-sm">
+                      <span className="text-muted-foreground">เงินปันผล</span>
+                      <span className="font-mono font-bold text-green-500">
+                        +{showValue ? formatCurrency(summary.totalDividends) : "••••••"}
+                      </span>
+                    </div>
 
-                <div className="flex justify-between items-center pt-2 sm:pt-3 border-t border-border mt-2">
-                  <span className="font-bold text-xs sm:text-sm">กำไรสุทธิจริง</span>
-                  <div className="text-right">
-                    <span className={`block font-mono font-black text-lg sm:text-xl ${(summary.totalRealizedPL + summary.totalDividends) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {(summary.totalRealizedPL + summary.totalDividends) >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalRealizedPL + summary.totalDividends) : "••••••"}
-                    </span>
+                    <div className="flex justify-between items-center pt-2 sm:pt-3 border-t border-border mt-2">
+                      <span className="font-bold text-xs sm:text-sm">กำไรสุทธิจริง</span>
+                      <div className="text-right">
+                        <span className={`block font-mono font-black text-lg sm:text-xl ${(summary.totalRealizedPL + summary.totalDividends) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {(summary.totalRealizedPL + summary.totalDividends) >= 0 ? '+' : ''}{showValue ? formatCurrency(summary.totalRealizedPL + summary.totalDividends) : "••••••"}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center text-xs text-muted-foreground py-2">
+                    แสดงเฉพาะมูลค่าและ Unrealized P/L ของ {activeFilter} <br />(ข้อมูล Realized/Dividends รวมอยู่ที่หน้าแรก)
                   </div>
-                </div>
+                )}
               </div>
             </Card>
           </div>
 
           {/* Right Column - Allocation Chart */}
           <div className="lg:col-span-5 xl:col-span-4">
-            <AllocationChart holdings={holdings} currency={currency} exchangeRate={exchangeRate} />
+            <AllocationChart holdings={filteredHoldings} currency={currency} exchangeRate={exchangeRate} />
           </div>
         </div>
 
@@ -342,8 +394,35 @@ export function DimeLayout({
             </div>
           </div>
 
+          {/* New Filter Chips */}
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
+            {[
+              { id: 'ALL', label: 'ทั้งหมด', icon: Wallet },
+              { id: 'ACTIVE', label: 'ถืออยู่', icon: Briefcase },
+              { id: 'STOCK', label: 'หุ้น', icon: TrendingUp },
+              { id: 'ETF', label: 'ETF', icon: PieChart },
+              { id: 'GOLD', label: 'ทองคำ', icon: Coins }
+            ].map(type => {
+              const Icon = type.icon;
+              return (
+                <Button
+                  key={type.id}
+                  variant={activeFilter === type.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setActiveFilter(type.id as any)}
+                  className="rounded-full px-4 h-8 text-xs whitespace-nowrap"
+                >
+                  <Icon className="w-3 h-3 mr-2" />
+                  {type.label}
+                </Button>
+              )
+            })}
+          </div>
+
           <div className="space-y-3">
             {Object.entries(holdingsByCategory).map(([category, categoryHoldings]) => {
+              if (categoryHoldings.length === 0) return null; // Hide empty categories after filtering
+
               const totals = getCategoryTotal(category);
               const CategoryIcon = getCategoryIcon(category);
 

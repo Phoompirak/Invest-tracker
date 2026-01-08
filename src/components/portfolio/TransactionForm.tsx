@@ -326,6 +326,9 @@ export function TransactionForm({
                   onChange={(e) => setTicker(e.target.value.toUpperCase())}
                   className="border-2 border-foreground font-mono uppercase"
                 />
+                <p className="text-[10px] text-muted-foreground">
+                  * สำหรับ Options: แนะนำให้ใส่ชื่อให้ชัดเจน เช่น "NVDA C1200 20/06"
+                </p>
               </div>
 
               {type !== 'dividend' && (

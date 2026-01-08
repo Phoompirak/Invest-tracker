@@ -285,38 +285,90 @@ export function PortfolioCharts({
 
   const totalDividends = monthlyDividendData.reduce((sum, d) => sum + d.dividend, 0);
 
-  // 7. Yearly P/L Data (กำไรขาดทุนแต่ละปี)
+  // 7. Yearly P/L Data (กำไรขาดทุนแต่ละปี - แยกแท่งกำไร/ขาดทุน)
   const yearlyPLData = useMemo(() => {
-    const yearlyMap = new Map<number, { realized: number; dividends: number }>();
+    // Track yearly invested for % calculation
+    const yearlyMap = new Map<number, {
+      gains: number;      // กำไรจากหุ้น (realized > 0)
+      losses: number;     // ขาดทุนจากหุ้น (realized < 0)
+      dividends: number;  // ปันผล
+      invested: number;   // เงินลงทุนสะสมสิ้นปี
+    }>();
 
+    // First pass: collect all years from transactions
+    const allYears = new Set<number>();
     transactions.forEach(t => {
-      const year = new Date(t.timestamp).getFullYear();
-      if (!yearlyMap.has(year)) {
-        yearlyMap.set(year, { realized: 0, dividends: 0 });
-      }
-      const data = yearlyMap.get(year)!;
+      allYears.add(new Date(t.timestamp).getFullYear());
+    });
 
-      // Convert to display currency
+    // Initialize all years
+    Array.from(allYears).forEach(year => {
+      yearlyMap.set(year, { gains: 0, losses: 0, dividends: 0, invested: 0 });
+    });
+
+    // Second pass: calculate P/L per year
+    let cumulativeInvested = 0;
+    const sortedTx = [...transactions].sort((a, b) =>
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+
+    sortedTx.forEach(t => {
+      const year = new Date(t.timestamp).getFullYear();
+      const data = yearlyMap.get(year);
+      if (!data) return;
+
       const rate = t.currency === 'USD' ? (t.exchangeRate || exchangeRate) : 1;
 
-      if (t.type === 'sell' && t.realizedPL !== undefined) {
-        data.realized += (t.realizedPL || 0) * rate;
+      if (t.type === 'buy') {
+        cumulativeInvested += t.totalValue * rate;
+      } else if (t.type === 'sell') {
+        const pl = (t.realizedPL || 0) * rate;
+        if (pl >= 0) {
+          data.gains += pl;
+        } else {
+          data.losses += pl; // Will be negative
+        }
+        cumulativeInvested -= t.totalValue * rate;
       } else if (t.type === 'dividend') {
-        const netDividend = t.totalValue - (t.withholdingTax || 0);
-        data.dividends += netDividend * rate;
+        const netDividend = (t.totalValue - (t.withholdingTax || 0)) * rate;
+        data.dividends += netDividend;
       }
+
+      data.invested = cumulativeInvested;
     });
 
     // Sort by year and convert to array
     const sortedYears = Array.from(yearlyMap.keys()).sort();
+
+    // Calculate total invested at end of each year for % calc
+    let runningInvested = 0;
     return sortedYears.map(year => {
       const data = yearlyMap.get(year)!;
-      const total = data.realized + data.dividends;
+      // Use the cumulative invested at end of year, or previous year's if no activity
+      runningInvested = data.invested > 0 ? data.invested : runningInvested;
+      const baseForPct = runningInvested > 0 ? runningInvested : 1;
+
+      const gainsConverted = convertValue(data.gains);
+      const lossesConverted = convertValue(Math.abs(data.losses)); // Make positive for bar height
+      const dividendsConverted = convertValue(data.dividends);
+      const totalConverted = gainsConverted - lossesConverted + dividendsConverted;
+
+      const gainsPct = (data.gains / baseForPct) * 100;
+      const lossesPct = (Math.abs(data.losses) / baseForPct) * 100;
+      const dividendsPct = (data.dividends / baseForPct) * 100;
+      const totalPct = ((data.gains + data.losses + data.dividends) / baseForPct) * 100;
+
       return {
         year: year.toString(),
-        realized: convertValue(data.realized),
-        dividends: convertValue(data.dividends),
-        total: convertValue(total),
+        gains: gainsConverted,
+        losses: -lossesConverted, // Negative for chart to show below axis
+        lossesAbs: lossesConverted, // For tooltip
+        dividends: dividendsConverted,
+        total: totalConverted,
+        gainsPct,
+        lossesPct,
+        dividendsPct,
+        totalPct,
       };
     });
   }, [transactions, currency, exchangeRate]);
@@ -330,51 +382,66 @@ export function PortfolioCharts({
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               📊 Yearly P/L
             </CardTitle>
-            <p className="text-xs sm:text-sm text-muted-foreground">กำไร/ขาดทุนแต่ละปี (Realized + Dividends)</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">กำไร/ขาดทุนแต่ละปี (แยกกำไร-ขาดทุน)</p>
           </CardHeader>
           <CardContent className="px-2 sm:px-6">
-            <div className="h-[200px] sm:h-[250px]">
+            <div className="h-[220px] sm:h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={yearlyPLData}>
+                <BarChart data={yearlyPLData} stackOffset="sign">
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="year" tick={{ fontSize: 11 }} />
                   <YAxis
-                    tickFormatter={(v) => formatCurrency(v)}
+                    tickFormatter={(v) => {
+                      const value = Math.abs(v);
+                      if (value >= 1000000) return `${currencySymbol}${(value / 1000000).toFixed(1)}M`;
+                      if (value >= 1000) return `${currencySymbol}${(value / 1000).toFixed(0)}K`;
+                      return `${currencySymbol}${value.toFixed(0)}`;
+                    }}
                     tick={{ fontSize: 10 }}
                     width={55}
                   />
                   <Tooltip
-                    formatter={(value: number, name: string) => {
-                      const label = name === 'realized' ? 'Realized P/L'
-                        : name === 'dividends' ? 'Dividends'
-                          : 'Total';
-                      return [`${currencySymbol}${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, label];
+                    formatter={(value: number, name: string, props: any) => {
+                      const entry = props.payload;
+                      if (name === 'gains') {
+                        return [`${currencySymbol}${Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: 0 })} (${entry.gainsPct.toFixed(1)}%)`, 'กำไรหุ้น'];
+                      } else if (name === 'losses') {
+                        return [`-${currencySymbol}${entry.lossesAbs.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${entry.lossesPct.toFixed(1)}%)`, 'ขาดทุนหุ้น'];
+                      } else if (name === 'dividends') {
+                        return [`${currencySymbol}${value.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${entry.dividendsPct.toFixed(1)}%)`, 'ปันผล'];
+                      }
+                      return [value, name];
                     }}
                     contentStyle={{ fontSize: 12 }}
                   />
                   <Legend
-                    formatter={(value) => value === 'realized' ? 'กำไรจริง' : value === 'dividends' ? 'ปันผล' : 'รวม'}
+                    formatter={(value) => {
+                      if (value === 'gains') return 'กำไรหุ้น';
+                      if (value === 'losses') return 'ขาดทุนหุ้น';
+                      if (value === 'dividends') return 'ปันผล';
+                      return value;
+                    }}
                     wrapperStyle={{ fontSize: 11 }}
                   />
-                  <Bar dataKey="realized" stackId="a" fill={COLORS.success} radius={[0, 0, 0, 0]} name="realized">
-                    {yearlyPLData.map((entry, index) => (
-                      <Cell
-                        key={`cell-realized-${index}`}
-                        fill={entry.realized >= 0 ? COLORS.success : COLORS.danger}
-                      />
-                    ))}
-                  </Bar>
-                  <Bar dataKey="dividends" stackId="a" fill={COLORS.warning} radius={[4, 4, 0, 0]} name="dividends" />
+                  {/* Losses bar (negative, red) */}
+                  <Bar dataKey="losses" fill={COLORS.danger} radius={[0, 0, 4, 4]} name="losses" />
+                  {/* Gains bar (positive, green) - stacked with dividends */}
+                  <Bar dataKey="gains" stackId="positive" fill={COLORS.success} radius={[0, 0, 0, 0]} name="gains" />
+                  {/* Dividends bar (positive, yellow/amber) - stacked on top of gains */}
+                  <Bar dataKey="dividends" stackId="positive" fill={COLORS.warning} radius={[4, 4, 0, 0]} name="dividends" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            {/* Summary Row */}
+            {/* Summary Row with % */}
             <div className="mt-3 grid grid-cols-3 gap-2 text-center">
               {yearlyPLData.slice(-3).map((item) => (
                 <div key={item.year} className="p-2 rounded-lg bg-muted/30">
                   <p className="text-xs text-muted-foreground">{item.year}</p>
-                  <p className={`text-sm font-bold ${item.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {item.total >= 0 ? '+' : ''}{currencySymbol}{item.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  <p className={`text-sm font-bold ${item.totalPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {item.totalPct >= 0 ? '+' : ''}{item.totalPct.toFixed(1)}%
+                  </p>
+                  <p className={`text-xs ${item.totalPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {item.totalPct >= 0 ? '+' : ''}{currencySymbol}{(item.gains + item.dividends + (item.losses)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </p>
                 </div>
               ))}

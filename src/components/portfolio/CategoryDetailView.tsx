@@ -102,18 +102,42 @@ export function CategoryDetailView({
                 {/* Category Summary */}
                 <div className="px-4 pb-4">
                     <Card className="p-4 bg-primary/5 border-primary/20">
-                        <div className="flex justify-between items-center">
+                        <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <p className="text-xs text-muted-foreground">หุ้นถืออยู่</p>
-                                <p className="text-2xl font-bold font-mono">
+                                <p className="text-lg sm:text-2xl font-bold font-mono">
                                     {holdings.filter(h => !h.isClosed).length} ตัว
                                 </p>
                             </div>
                             <div className="text-right">
                                 <p className="text-xs text-muted-foreground">กำไรขายแล้วรวม</p>
-                                <p className={`text-lg font-bold font-mono ${totalRealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                <p className={`text-sm sm:text-lg font-bold font-mono ${totalRealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                     {showValue ? formatCurrency(totalRealizedPL) : "••••••"}
                                 </p>
+                            </div>
+
+                            {/* New: Unrealized P/L for active holdings */}
+                            <div className="col-span-2 pt-2 border-t border-border/50">
+                                <div className="flex justify-between items-end">
+                                    <div>
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                            กำไรทิพย์ (Unrealized)
+                                            {totalUnrealizedPL !== 0 && (
+                                                totalUnrealizedPL >= 0
+                                                    ? <TrendingUp className="h-3 w-3 text-green-500" />
+                                                    : <TrendingDown className="h-3 w-3 text-red-500" />
+                                            )}
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className={`text-xl sm:text-2xl font-bold font-mono ${totalUnrealizedPL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                            {showValue ? formatCurrency(totalUnrealizedPL) : "••••••"}
+                                        </p>
+                                        <p className={`text-xs font-mono ${totalUnrealizedPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                            {showValue ? formatPercent((totalUnrealizedPL / totalInvested) * 100) : "••••••"}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </Card>
